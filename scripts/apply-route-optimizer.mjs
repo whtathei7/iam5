@@ -60,6 +60,7 @@ function 处理订阅钩子() {
   let 已写入优化节点 = false;
   if (!禁用优选 && 启用线路优化) {
     try {
+      线路入口域名 = 工作器域名504;
       const 优化节点 = await 组装线路优化节点();
       if (优化节点.length > 0) {
         await 添加节点列表来源列表(优化节点);
@@ -150,9 +151,9 @@ const 面板 = `                        <div style="margin-bottom: 15px;">
                                 </div>
                                 <div style="margin-top: 12px;">
                                     <label style="display: block; margin-bottom: 6px; color: #00f0ff;">兜底优选池 URL</label>
-                                    <textarea id="optPool" rows="3" placeholder="留空使用内置地区池。每行一个 https 地址，最多 6 个" style="width: 100%; padding: 10px; background: rgba(0, 0, 0, 0.8); border: 1px solid #00f0ff; color: #00f0ff; font-family: 'Courier New', monospace; font-size: 13px;"></textarea>
+                                    <textarea id="optPool" rows="3" placeholder="留空使用实测优选。只采纳 Cloudflare 网段，每行一个 https 地址，最多 6 个" style="width: 100%; padding: 10px; background: rgba(0, 0, 0, 0.8); border: 1px solid #00f0ff; color: #00f0ff; font-family: 'Courier New', monospace; font-size: 13px;"></textarea>
                                 </div>
-                                <small style="color: #7aa9c4; font-size: 0.85rem; display: block; margin-top: 10px;">优选池按延迟和速度排序，测活去掉不通的地址，保底节点固定在最前并每 5 分钟轮换一次头部。IPv6 默认不进订阅。外部源缓存 30 分钟，拉取失败继续用上一份。填写了优选 IP 时默认只下发自定义节点和保底节点。</small>
+                                <small style="color: #7aa9c4; font-size: 0.85rem; display: block; margin-top: 10px;">只下发 Cloudflare 网段里的地址。下发前做 TLS 握手，握手失败的地址不再下发；延迟低、速度快的排在最前。本机域名作为入口，避免优选地址全灭时订阅里没有能用的节点。</small>
                             </div>
                         </div>
 `;

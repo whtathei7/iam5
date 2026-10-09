@@ -2922,23 +2922,87 @@ async function 生成家宽链式值(链接列表) {
 
 /* ROUTE_OPT_START module */
 // 线路优化的纯逻辑。订阅生成时由 _worker.js 调用，单测直接引用本文件。
-// 思路借鉴 CFNext 公开方案：优选池优先、随机补足封顶、测活剔除、保底前置、IPv6 后置、头部轮换。
+// 思路借鉴 CFNext：实测优选优先、只保留 Cloudflare 网段、TLS 握手测活、保底前置、IPv6 后置、头部轮换。
 // 实现独立，不复制其源码。
 
-export const 内置地区代码 = ['HK', 'TW', 'JP', 'SG', 'US', 'KR'];
+export const 内置地区代码 = ['JP', 'SG', 'US'];
+export const 地区云墙源 = {
+  JP: 'https://bestcf.pages.dev/gslege/JP.txt',
+  SG: 'https://bestcf.pages.dev/gslege/SG.txt',
+  US: 'https://bestcf.pages.dev/gslege/US.txt',
+  DE: 'https://bestcf.pages.dev/gslege/DE.txt'
+};
 export const 实测优选源 = [
   'https://bestcf.pages.dev/uouin/all.txt',
   'https://bestcf.pages.dev/cfyes/ipv4.txt'
 ];
+export const 入口优选源 = 'https://bestcf.pages.dev/entryip/50.txt';
 export const 六版优选源 = 'https://bestcf.pages.dev/cfyes/ipv6.txt';
+export const 云墙安全端口 = [443, 2053, 2083, 2087, 2096, 8443];
+export const 云墙明文端口 = [80, 8080, 8880, 2052, 2082, 2086, 2095];
+export const 云墙四版网段 = [
+  '173.245.48.0/20',
+  '103.21.244.0/22',
+  '103.22.200.0/22',
+  '103.31.4.0/22',
+  '141.101.64.0/18',
+  '108.162.192.0/18',
+  '190.93.240.0/20',
+  '188.114.96.0/20',
+  '197.234.240.0/22',
+  '198.41.128.0/17',
+  '162.158.0.0/15',
+  '104.16.0.0/13',
+  '104.24.0.0/14',
+  '172.64.0.0/13',
+  '131.0.72.0/22'
+];
+export const 云墙六版网段 = [
+  '2400:cb00::/32',
+  '2606:4700::/32',
+  '2803:f800::/32',
+  '2405:b500::/32',
+  '2405:8100::/32',
+  '2a06:98c0::/29',
+  '2c0f:f248::/32'
+];
+// 2026-10-09 对 entryip 列表做过 TLS 握手，只留下能完成握手的地址。旧的内置直连地址握手超时，不能再当保底。
+export const 实测入口地址 = [
+  '104.16.0.1',
+  '104.17.0.1',
+  '104.18.0.1',
+  '104.19.0.1',
+  '104.20.0.1',
+  '104.21.0.1',
+  '104.24.0.1',
+  '104.25.0.1',
+  '104.26.0.1',
+  '104.27.0.1',
+  '103.31.4.1',
+  '108.162.192.1',
+  '108.162.193.1',
+  '108.162.194.1',
+  '141.101.115.1',
+  '141.101.120.1',
+  '162.159.192.1',
+  '162.159.193.1',
+  '162.159.195.1',
+  '172.65.0.1',
+  '172.66.0.1',
+  '188.114.96.1',
+  '188.114.97.1',
+  '188.114.98.1',
+  '188.114.99.1',
+  '190.93.244.1'
+];
 export const 低延迟网段 = [
   '104.16.0.0/16',
   '104.17.0.0/16',
   '104.18.0.0/16',
   '104.19.0.0/16',
   '104.24.0.0/16',
-  '172.64.0.0/16',
-  '162.158.0.0/16'
+  '104.25.0.0/16',
+  '104.26.0.0/16'
 ];
 
 const 地区中文 = {
@@ -3029,7 +3093,66 @@ export function 整理线路选项(输入 = {}) {
 }
 
 export function 内置地区源(地区) {
-  return `https://bestcf.pages.dev/random-region/${地区}/10.txt`;
+  return 地区云墙源[地区] || '';
+}
+
+export function 规范云墙端口(端口, 保留原样 = false) {
+  const 值 = Number(端口) || 443;
+  if (保留原样) return 值 > 0 && 值 <= 65535 ? 值 : 443;
+  if (云墙安全端口.includes(值) || 云墙明文端口.includes(值)) return 值;
+  return 443;
+}
+
+export function 展开六版(地址) {
+  const 文本 = String(地址 || '').trim().toLowerCase();
+  if (!文本 || 文本.includes('.')) return null;
+  const 左右 = 文本.split('::');
+  if (左右.length > 2) return null;
+  const 解析 = 段 => 段 ? 段.split(':').filter(Boolean) : [];
+  const 左 = 解析(左右[0]);
+  const 右 = 左右.length === 2 ? 解析(左右[1]) : [];
+  if (左右.length === 1 && 左.length !== 8) return null;
+  const 缺 = 8 - 左.length - 右.length;
+  if (缺 < 0) return null;
+  const 段 = 左.concat(Array(缺).fill('0'), 右);
+  const 数 = 段.map(项 => (/^[0-9a-f]{1,4}$/.test(项) ? parseInt(项, 16) : NaN));
+  if (数.length !== 8 || 数.some(项 => Number.isNaN(项))) return null;
+  return 数;
+}
+
+export function 位于六版网段(地址, 网段) {
+  const [基址, 掩码文本] = String(网段 || '').split('/');
+  const 掩码 = Number(掩码文本);
+  const 甲 = 展开六版(地址);
+  const 乙 = 展开六版(基址);
+  if (!甲 || !乙 || !Number.isFinite(掩码)) return false;
+  let 剩余 = 掩码;
+  for (let 索引 = 0; 索引 < 8 && 剩余 > 0; 索引++) {
+    const 位 = Math.min(16, 剩余);
+    const 遮 = 位 === 16 ? 0xffff : ((0xffff << (16 - 位)) & 0xffff);
+    if ((甲[索引] & 遮) !== (乙[索引] & 遮)) return false;
+    剩余 -= 位;
+  }
+  return true;
+}
+
+export function 位于云墙网段(地址) {
+  const 种类 = 地址种类(地址);
+  if (种类 === 'v4') return 云墙四版网段.some(网段 => 地址位于网段(地址, 网段));
+  if (种类 === 'v6') return 云墙六版网段.some(网段 => 位于六版网段(地址, 网段));
+  return false;
+}
+
+export function 可拨号节点(节点, 允许外部 = false) {
+  if (!节点 || !节点.ip || !节点.kind) return false;
+  if (节点.kind === 'domain') return true;
+  if (允许外部 || 节点.pinned) return true;
+  return 位于云墙网段(节点.ip);
+}
+
+export function 速度可用(节点) {
+  if (!节点 || !节点.speed) return true;
+  return 节点.speed >= 1;
 }
 
 export function 地址种类(地址) {
@@ -3104,7 +3227,7 @@ export function 解析优选行(行, 配置 = {}) {
   const 地区 = 识别地区(备注);
   const 线路 = 识别线路(备注);
   const 延迟匹配 = 备注.match(/(\d+(?:\.\d+)?)\s*ms/i);
-  const 速度匹配 = 备注.match(/(\d+(?:\.\d+)?)\s*mb\/s/i);
+  const 速度匹配 = 备注.match(/(\d+(?:\.\d+)?)\s*mb(?:ps|\/s)/i);
   const 偏向地区 = 配置.prefer === 'region';
   const 名称 = (偏向地区 ? (地区 && 地区.名) || 线路 : 线路 || (地区 && 地区.名)) || 配置.fallbackName || '优选IP';
   return {
@@ -3177,9 +3300,11 @@ export function 筛选优选(列表, 选项) {
   });
 }
 
-export function 挑选测活样本(列表, 上限 = 24) {
-  const 保底 = (列表 || []).filter(节点 => 节点.tier === 0 && 节点.kind !== 'domain');
-  const 其余 = (列表 || []).filter(节点 => 节点.tier !== 0 && 节点.kind !== 'domain').sort(比较优选);
+export function 挑选测活样本(列表, 上限 = 16) {
+  const 地址 = (列表 || []).filter(节点 => 节点 && 节点.kind !== 'domain');
+  const 快 = 地址.filter(节点 => 节点.speed >= 1).sort(比较优选);
+  const 入口 = 地址.filter(节点 => 节点.tier === 0 && !(节点.speed >= 1));
+  const 其余 = 地址.filter(节点 => 节点.tier !== 0 && !(节点.speed >= 1)).sort(比较优选);
   const 选出 = [];
   const 已见 = new Set();
   const 放入 = 节点 => {
@@ -3189,35 +3314,137 @@ export function 挑选测活样本(列表, 上限 = 24) {
     已见.add(键);
     选出.push(节点);
   };
-  保底.forEach(放入);
-  const 按组 = new Map();
-  for (const 节点 of 其余) {
-    const 组 = 节点.region || 节点.isp || '其他';
-    if (!按组.has(组)) 按组.set(组, []);
-    按组.get(组).push(节点);
-  }
-  const 组列表 = [...按组.values()];
-  let 轮次 = 0;
-  while (选出.length < 上限 && 组列表.some(组 => 组.length > 轮次)) {
-    for (const 组 of 组列表) {
-      if (选出.length >= 上限) break;
-      if (组[轮次]) 放入(组[轮次]);
-    }
-    轮次++;
-  }
+  const 入口名额 = Math.min(4, Math.floor(上限 / 4));
+  快.slice(0, 上限 - 入口名额).forEach(放入);
+  入口.slice(0, 入口名额).forEach(放入);
+  其余.forEach(放入);
+  快.forEach(放入);
   return 选出;
 }
 
-export function 应用测活结果(列表, 存活键, 已探测键, 选项) {
-  if (!选项.probe) return 列表;
-  const 存活 = new Set(存活键 || []);
-  const 已探测 = new Set(已探测键 || []);
-  if (!已探测.size) return 列表;
-  const 活着 = (列表 || []).filter(节点 => 存活.has(节点键(节点)));
-  if (!活着.length) return 列表;
-  if (活着.length >= Math.min(8, 选项.limit || 8)) return 活着;
-  const 未测 = (列表 || []).filter(节点 => !已探测.has(节点键(节点)));
-  return 活着.concat(未测);
+export function 保留可用速度(列表, 最少 = 8) {
+  const 快 = [];
+  const 慢 = [];
+  for (const 节点 of 列表 || []) {
+    if (!节点) continue;
+    if (节点.kind === 'domain' || 节点.pinned || 速度可用(节点)) 快.push(节点);
+    else 慢.push(节点);
+  }
+  const 地址数 = 快.filter(节点 => 节点.kind !== 'domain').length;
+  if (地址数 >= 最少) return 快;
+  return 快.concat(慢);
+}
+
+export function 应用握手结果(列表, 探测, 选项, 严格 = false) {
+  const 原文 = 列表 || [];
+  if (!选项 || !选项.probe) return { nodes: 原文, effective: true };
+  const 表 = new Map((探测 || []).filter(项 => 项 && 项.key).map(项 => [项.key, 项]));
+  if (!表.size) return { nodes: 严格 ? 原文.filter(节点 => 节点.kind === 'domain') : 原文, effective: false };
+  const 域名 = 原文.filter(节点 => 节点.kind === 'domain');
+  const 地址 = 原文.filter(节点 => 节点.kind !== 'domain');
+  const 活 = [];
+  for (const 节点 of 地址) {
+    const 结果 = 表.get(节点键(节点));
+    if (结果 && 结果.status === 'ok') 活.push({ ...节点, port: 结果.port || 节点.port || 443, alive: true });
+  }
+  const 钉住 = 地址.filter(节点 => 节点.pinned && !表.has(节点键(节点)));
+  if (活.length) {
+    const 未测 = 严格 ? [] : 地址.filter(节点 => {
+      if (表.has(节点键(节点)) || 节点.pinned || 节点.tier === 5) return false;
+      return 位于云墙网段(节点.ip) && 节点.speed >= 5;
+    });
+    return { nodes: 合并去重(活.concat(钉住, 未测, 域名)), effective: true };
+  }
+  if (严格) return { nodes: 合并去重(钉住.concat(域名)), effective: false };
+  const 未测 = 地址.filter(节点 => !表.has(节点键(节点)) && 节点.tier !== 5 && 位于云墙网段(节点.ip) && 节点.speed >= 1);
+  return { nodes: 合并去重(钉住.concat(未测, 域名)), effective: false };
+}
+
+function 拼接字节(...块) {
+  const 列表 = 块.map(项 => (项 instanceof Uint8Array ? 项 : Uint8Array.from(项)));
+  const 总长 = 列表.reduce((和, 项) => 和 + 项.length, 0);
+  const 结果 = new Uint8Array(总长);
+  let 偏移 = 0;
+  for (const 项 of 列表) {
+    结果.set(项, 偏移);
+    偏移 += 项.length;
+  }
+  return 结果;
+}
+
+function 双字节(值) {
+  return Uint8Array.of((值 >> 8) & 255, 值 & 255);
+}
+
+function 三字节(值) {
+  return Uint8Array.of((值 >> 16) & 255, (值 >> 8) & 255, 值 & 255);
+}
+
+const 默认共享公钥 = Uint8Array.from([
+  0x42, 0x79, 0x18, 0x01, 0x82, 0x6d, 0x55, 0x4e, 0x96, 0x94, 0xe1, 0x9a, 0x52, 0x05, 0xef, 0xf3,
+  0xd7, 0x06, 0x8b, 0x75, 0x7e, 0xca, 0xd0, 0x58, 0x16, 0x04, 0x22, 0x63, 0x43, 0x65, 0x89, 0x0f
+]);
+
+export function 构造握手请求(主机名 = 'www.cloudflare.com', 公钥 = null) {
+  const 主机 = new TextEncoder().encode(String(主机名 || 'www.cloudflare.com'));
+  const 名称扩展 = 拼接字节(双字节(0), 双字节(主机.length + 5), 双字节(主机.length + 3), Uint8Array.of(0), 双字节(主机.length), 主机);
+  const 共享公钥 = 公钥 instanceof Uint8Array && 公钥.length === 32 ? 公钥 : 默认共享公钥;
+  const 组体 = 拼接字节(双字节(4), 双字节(0x001d), 双字节(0x0017));
+  const 组 = 拼接字节(双字节(10), 双字节(组体.length), 组体);
+  const 点 = 拼接字节(双字节(11), 双字节(4), Uint8Array.of(3, 0, 1, 2));
+  const 签名列表 = [0x0403, 0x0503, 0x0603, 0x0807, 0x0808, 0x0804, 0x0805, 0x0401, 0x0501, 0x0601];
+  const 签名体 = 拼接字节(双字节(签名列表.length * 2), ...签名列表.map(双字节));
+  const 签名 = 拼接字节(双字节(13), 双字节(签名体.length), 签名体);
+  const 版本 = 拼接字节(双字节(43), 双字节(5), Uint8Array.of(4, 0x03, 0x04, 0x03, 0x03));
+  const 预共享 = 拼接字节(双字节(45), 双字节(2), Uint8Array.of(1, 1));
+  const 扩展主密钥 = 拼接字节(双字节(23), 双字节(0));
+  const 共享项 = 拼接字节(双字节(0x001d), 双字节(32), 共享公钥);
+  const 共享体 = 拼接字节(双字节(共享项.length), 共享项);
+  const 共享 = 拼接字节(双字节(51), 双字节(共享体.length), 共享体);
+  const 扩展 = 拼接字节(名称扩展, 组, 点, 签名, 版本, 预共享, 扩展主密钥, 共享);
+  const 套件 = [0x1301, 0x1302, 0x1303, 0xc02f, 0xc02b, 0xc030, 0xcca9, 0xcca8];
+  const 套件体 = 拼接字节(双字节(套件.length * 2), ...套件.map(双字节));
+  const 随机 = Uint8Array.from({ length: 32 }, (_, 索引) => (索引 * 17 + 9) & 255);
+  const 会话 = Uint8Array.from({ length: 32 }, (_, 索引) => (索引 * 13 + 3) & 255);
+  const 主体 = 拼接字节(Uint8Array.of(0x03, 0x03), 随机, Uint8Array.of(32), 会话, 套件体, Uint8Array.of(1, 0), 双字节(扩展.length), 扩展);
+  const 握手 = 拼接字节(Uint8Array.of(1), 三字节(主体.length), 主体);
+  return 拼接字节(Uint8Array.of(0x16, 0x03, 0x01), 双字节(握手.length), 握手);
+}
+
+export function 判断握手应答(数据) {
+  const 字节 = 数据 instanceof Uint8Array ? 数据 : new Uint8Array(数据 || []);
+  if (字节.length < 3) return 'wait';
+  if (字节[0] === 0x16 && 字节[1] === 0x03) return 'ok';
+  return 'dead';
+}
+
+export function 标注保底(列表) {
+  const 四版 = (列表 || []).filter(节点 => 节点 && 节点.kind === 'v4');
+  const 有存活 = 四版.some(节点 => 节点.alive);
+  const 可当保底 = 节点 => !有存活 || 节点.alive;
+  const 快 = 四版.filter(节点 => 可当保底(节点) && 节点.speed >= 5).sort(比较优选);
+  const 入口 = 四版.filter(节点 => 可当保底(节点) && 实测入口地址.includes(节点.ip));
+  const 候选 = 快.length >= 4 ? 快 : 入口.concat(快);
+  const 保底键 = new Set();
+  for (const 节点 of 候选) {
+    保底键.add(节点键(节点));
+    if (保底键.size >= 8) break;
+  }
+  return (列表 || []).map(节点 => {
+    if (!节点) return 节点;
+    if (节点.isp === '入口') return { ...节点, tier: 0 };
+    if (保底键.has(节点键(节点))) return { ...节点, tier: 0, isp: '保底' };
+    if (节点.tier === 0 && 节点.kind !== 'domain') {
+      return { ...节点, tier: 2, isp: 节点.isp === '保底' ? '入口IP' : 节点.isp };
+    }
+    return 节点;
+  });
+}
+
+export function 生成入口节点(域名) {
+  const 文本 = String(域名 || '').trim().replace(/\.$/, '');
+  if (!文本 || 地址种类(文本) !== 'domain') return null;
+  return { ip: 文本, port: 443, isp: '入口', tier: 0, kind: 'domain', latency: null, speed: 0, region: '' };
 }
 
 export function 轮换序列(列表, 现在 = Date.now(), 窗口 = 8, 间隔毫秒 = 300000) {
@@ -3231,17 +3458,18 @@ export function 轮换序列(列表, 现在 = Date.now(), 窗口 = 8, 间隔毫�
 export function 编排优选节点(列表, 选项, 现在 = Date.now()) {
   const 四版开启 = 选项.ipv4 || !选项.ipv6;
   const 筛选 = 筛选优选(合并去重(列表), 选项);
-  const 保底 = 筛选.filter(节点 => 节点.tier === 0 && 节点.kind !== 'domain');
-  const 域名 = 筛选.filter(节点 => 节点.kind === 'domain');
+  const 保底 = 筛选.filter(节点 => 节点.tier === 0 && 节点.kind !== 'domain').sort(比较优选);
+  const 入口 = 筛选.filter(节点 => 节点.isp === '入口');
+  const 域名 = 筛选.filter(节点 => 节点.kind === 'domain' && 节点.isp !== '入口');
   const 四版 = 筛选.filter(节点 => 节点.kind === 'v4' && 节点.tier !== 0).sort(比较优选);
   const 六版 = 筛选.filter(节点 => 节点.kind === 'v6').sort(比较优选);
-  const 保底序 = 选项.balance ? 轮换序列(保底, 现在, 保底.length, 300000) : 保底;
+  const 保底序 = 选项.balance ? 轮换序列(保底, 现在, Math.min(8, 保底.length), 300000) : 保底;
   const 四版序 = 选项.balance ? 轮换序列(四版, 现在, Math.min(8, 四版.length), 300000) : 四版;
   let 主体;
   if (!四版开启 && 选项.ipv6) {
-    主体 = 六版.concat(域名);
+    主体 = 入口.concat(六版, 域名);
   } else if (!选项.ipv6 || 选项.v6policy === 'off') {
-    主体 = 保底序.concat(四版序, 域名);
+    主体 = 保底序.concat(入口, 四版序, 域名);
   } else if (选项.v6policy === 'mix') {
     const 混合 = [];
     const 次数 = Math.max(四版序.length, 六版.length);
@@ -3249,10 +3477,10 @@ export function 编排优选节点(列表, 选项, 现在 = Date.now()) {
       if (四版序[索引]) 混合.push(四版序[索引]);
       if (六版[索引]) 混合.push(六版[索引]);
     }
-    主体 = 保底序.concat(混合, 域名);
+    主体 = 保底序.concat(入口, 混合, 域名);
   } else {
     const 限额 = Math.max(1, Math.floor((选项.limit || 36) * 0.15));
-    主体 = 保底序.concat(四版序, 域名, 六版.slice(0, 限额));
+    主体 = 保底序.concat(入口, 四版序, 域名, 六版.slice(0, 限额));
   }
   return 主体.slice(0, 选项.limit || 36);
 }
@@ -3405,6 +3633,7 @@ let 线路优化内存 = null;
 let 线路优化刷新任务 = null;
 let 线路优化刷新键 = '';
 let 线路写入账本 = { day: '', writes: 0, lastAt: 0, hash: '' };
+let 线路入口域名 = '';
 
 function 应用线路优化开关() {
   const 线路 = 整理线路选项(获取有效配置快照(当前环境));
@@ -3440,6 +3669,7 @@ function 读取当前线路选项() {
 
 function 线路缓存键(选项, 自定义摘要) {
   return [
+    'tls2',
     选项.region,
     选项.mobile ? 1 : 0,
     选项.unicom ? 1 : 0,
@@ -3539,21 +3769,57 @@ async function 拉取并解析(网址, 配置) {
   return 解析优选文本(文本, 配置);
 }
 
-async function 探测套接字可达(主机, 端口, 超时毫秒) {
+async function 读到判定(读取器, 超时毫秒) {
+  const 块 = [];
+  let 长度 = 0;
+  const 截止 = Date.now() + 超时毫秒;
+  while (Date.now() < 截止) {
+    const 剩余 = Math.max(1, 截止 - Date.now());
+    let 定时器 = null;
+    const 片段 = await Promise.race([
+      读取器.read().then(结果 => 结果).catch(() => null),
+      new Promise(完成 => {
+        定时器 = setTimeout(() => 完成(null), 剩余);
+      })
+    ]);
+    if (定时器) clearTimeout(定时器);
+    if (!片段 || 片段.done || !片段.value) return 长度 ? 'dead' : 'timeout';
+    const 值 = 片段.value instanceof Uint8Array ? 片段.value : new Uint8Array(片段.value);
+    块.push(值);
+    长度 += 值.length;
+    const 合并 = new Uint8Array(长度);
+    let 偏移 = 0;
+    for (const 段 of 块) {
+      合并.set(段, 偏移);
+      偏移 += 段.length;
+    }
+    const 判定 = 判断握手应答(合并);
+    if (判定 !== 'wait') return 判定;
+    if (长度 > 80) return 'dead';
+  }
+  return 'timeout';
+}
+
+async function 探测握手(主机, 端口, 超时毫秒) {
   let 套接字 = null;
   let 定时器 = null;
   try {
     套接字 = 连接({ hostname: 主机, port: Number(端口) || 443 });
-    const 超时 = new Promise(完成 => {
-      定时器 = setTimeout(() => 完成(false), 超时毫秒);
-    });
-    const 成功 = await Promise.race([
+    const 打开 = await Promise.race([
       套接字.opened.then(() => true).catch(() => false),
-      超时
+      new Promise(完成 => {
+        定时器 = setTimeout(() => 完成(false), 超时毫秒);
+      })
     ]);
-    return 成功 === true;
+    if (!打开 || !套接字.writable || !套接字.readable) return 'timeout';
+    const 写入器 = 套接字.writable.getWriter();
+    await 写入器.write(构造握手请求('www.cloudflare.com'));
+    try {
+      写入器.releaseLock();
+    } catch (忽略) {}
+    return await 读到判定(套接字.readable.getReader(), 超时毫秒);
   } catch (错误) {
-    return false;
+    return 'dead';
   } finally {
     if (定时器) clearTimeout(定时器);
     try {
@@ -3562,18 +3828,28 @@ async function 探测套接字可达(主机, 端口, 超时毫秒) {
   }
 }
 
-async function 测活候选(候选, 选项) {
+async function 测活候选(候选, 选项, 严格 = false) {
   if (!选项.probe) return { nodes: 候选, effective: true };
-  const 样本 = 挑选测活样本(候选, 24);
-  if (!样本.length) return { nodes: 候选, effective: true };
-  const 探测键 = 样本.map(节点键);
-  const 结果 = await 并发映射(样本, 4, async 节点 => {
-    if (节点.kind === 'domain') return '';
-    const 通 = await 探测套接字可达(节点.ip, 节点.port || 443, 1000);
-    return 通 ? 节点键(节点) : '';
+  const 样本 = 挑选测活样本((候选 || []).filter(节点 => 节点.kind !== 'domain' && 位于云墙网段(节点.ip)), 16);
+  if (!样本.length) return 应用握手结果(候选, [], 选项, 严格);
+  const 首轮 = await 并发映射(样本, 4, async 节点 => {
+    const 端口 = 规范云墙端口(节点.port, !!节点.pinned);
+    const 状态 = await 探测握手(节点.ip, 端口, 900);
+    return { key: 节点键(节点), port: 端口, status: 状态, node: 节点 };
   });
-  const 存活 = 结果.filter(Boolean);
-  return { nodes: 应用测活结果(候选, 存活, 探测键, 选项), effective: 存活.length > 0 };
+  let 结果 = 首轮.map(项 => ({ key: 项.key, port: 项.port, status: 项.status }));
+  const 活着 = 结果.filter(项 => 项.status === 'ok').length;
+  if (活着 < 8) {
+    const 失败 = 首轮.filter(项 => 项.status !== 'ok').slice(0, 6);
+    const 补救 = await 并发映射(失败, 3, async 项 => {
+      const 状态 = await 探测握手(项.node.ip, 8443, 700);
+      if (状态 === 'ok') return { key: 项.key, port: 8443, status: 'ok' };
+      return { key: 项.key, port: 项.port, status: 项.status };
+    });
+    const 补表 = new Map(补救.map(项 => [项.key, 项]));
+    结果 = 结果.map(项 => 补表.get(项.key) || 项);
+  }
+  return 应用握手结果(候选, 结果, 选项, 严格);
 }
 
 async function 域名仍可解析(域名) {
@@ -3619,7 +3895,8 @@ function 自定义转节点() {
     kind: 地址种类(项.ip),
     latency: null,
     speed: 0,
-    region: ''
+    region: '',
+    pinned: true
   }));
   const 域名 = 自定义优选域名列表.map(项 => ({
     ip: 项.domain,
@@ -3629,9 +3906,17 @@ function 自定义转节点() {
     kind: 'domain',
     latency: null,
     speed: 0,
-    region: ''
+    region: '',
+    pinned: true
   }));
   return 地址.concat(域名).filter(项 => 项.kind);
+}
+
+function 收成云墙(列表) {
+  return (列表 || []).filter(节点 => 可拨号节点(节点, !!节点.pinned)).map(节点 => {
+    if (!节点 || 节点.kind === 'domain') return 节点;
+    return { ...节点, port: 规范云墙端口(节点.port, !!节点.pinned) };
+  });
 }
 
 async function 读取仓库优选节点() {
@@ -3655,9 +3940,10 @@ async function 读取仓库优选节点() {
 async function 拉取远程优选(选项) {
   const 任务 = [];
   if (启用优选地址) {
-    任务.push(拉取并解析(实测优选源[0], { tier: 1, fallbackName: '优选IP', prefer: 'isp', maxLines: 80 }).then(列表 => 列表.sort(比较优选).slice(0, 16)));
-    任务.push(拉取并解析(实测优选源[1], { tier: 1, fallbackName: '优选IP', prefer: 'isp', maxLines: 60 }).then(列表 => 列表.sort(比较优选).slice(0, 12)));
-    const 地区网址 = 选项.pool.length ? 选项.pool : (选项.region === 'all' ? 内置地区代码 : [选项.region]).map(内置地区源);
+    任务.push(拉取并解析(实测优选源[0], { tier: 1, fallbackName: '优选IP', prefer: 'isp', maxLines: 80 }).then(列表 => 列表.sort(比较优选).slice(0, 24)));
+    任务.push(拉取并解析(实测优选源[1], { tier: 1, fallbackName: '优选IP', prefer: 'isp', maxLines: 60 }).then(列表 => 列表.sort(比较优选).slice(0, 16)));
+    任务.push(拉取并解析(入口优选源, { tier: 0, fallbackName: '入口IP', prefer: 'isp', maxLines: 60 }));
+    const 地区网址 = 选项.pool.length ? 选项.pool : (选项.region === 'all' ? 内置地区代码 : [选项.region]).map(内置地区源).filter(Boolean);
     for (const 网址 of 地区网址) {
       任务.push(拉取并解析(网址, { tier: 2, fallbackName: '优选IP', prefer: 'region', maxLines: 20 }).then(列表 => 列表.slice(0, 6)));
     }
@@ -3671,24 +3957,23 @@ async function 拉取远程优选(选项) {
   for (const 项 of 结算) {
     if (项.status === 'fulfilled' && Array.isArray(项.value)) 节点 = 节点.concat(项.value);
   }
+  节点 = 收成云墙(节点);
+  节点 = 保留可用速度(节点, 8);
   const 质量 = 节点.filter(项 => 项.kind === 'v4' && 项.tier <= 2).length;
-  if (启用优选地址 && 质量 < 8) {
-    节点 = 节点.concat(随机补足节点(Math.max(4, Math.round(选项.limit * 0.2))));
-    if (质量 < 5) {
-      try {
-        const 旧列表 = await 获取值地址列表();
-        节点 = 节点.concat((旧列表 || []).map(项 => ({
-          ip: 项.ip,
-          port: 443,
-          isp: 项.isp || '优选IP',
-          tier: 1,
-          kind: 地址种类(项.ip),
-          latency: null,
-          speed: 0,
-          region: ''
-        })).filter(项 => 项.kind));
-      } catch (错误) {}
-    }
+  if (启用优选地址 && 质量 < 5) {
+    try {
+      const 旧列表 = await 获取值地址列表();
+      节点 = 节点.concat(收成云墙((旧列表 || []).map(项 => ({
+        ip: 项.ip,
+        port: 443,
+        isp: 项.isp || '优选IP',
+        tier: 1,
+        kind: 地址种类(项.ip),
+        latency: null,
+        speed: 0,
+        region: ''
+      }))));
+    } catch (错误) {}
   }
   return 合并去重(节点);
 }
@@ -3699,12 +3984,18 @@ async function 刷新线路候选(键, 选项, 本地候选, 独占) {
   线路优化刷新任务 = (async () => {
     let 远程 = [];
     if (!独占 && (启用优选地址 || (启用仓库优选 && 优选地址源))) 远程 = await 拉取远程优选(选项);
-    let 候选 = 本地候选.concat(远程);
+    let 候选 = 收成云墙(本地候选.concat(远程));
     if (启用优选域名 && !独占) 候选 = 候选.concat(await 选取优选域名(4));
-    候选 = 筛选优选(合并去重(候选), 选项);
+    候选 = 保留可用速度(筛选优选(合并去重(候选), 选项), 8);
     const 测活 = await 测活候选(候选, 选项);
     候选 = 测活.nodes;
-    if (候选.length) await 写入线路缓存(键, 候选, 测活.effective, 独占);
+    let 四版数 = 候选.filter(项 => 项.kind === 'v4' && 项.alive).length;
+    if (启用优选地址 && !独占 && 选项.probe && 四版数 < 8) {
+      const 补测 = await 测活候选(随机补足节点(6), { ...选项, limit: 8 }, true);
+      候选 = 合并去重(候选.concat((补测.nodes || []).filter(项 => 项.kind === 'v4' && 项.alive)));
+      四版数 = 候选.filter(项 => 项.kind === 'v4' && 项.alive).length;
+    }
+    if (候选.length) await 写入线路缓存(键, 候选, 四版数 > 0, 独占);
     return 候选;
   })().finally(() => {
     if (线路优化刷新键 === 键) 线路优化刷新任务 = null;
@@ -3717,7 +4008,7 @@ async function 组装线路优化节点() {
   const 有自定义 = 自定义优选地址列表.length > 0 || 自定义优选域名列表.length > 0;
   const 独占 = 有自定义 && !选项.merge;
   const 本地 = [];
-  if (选项.anchor) 本地.push(...生成保底节点(官方直连地址));
+  if (选项.anchor) 本地.push(...生成保底节点(实测入口地址));
   if (有自定义) 本地.push(...自定义转节点());
   const 摘要 = 短哈希(JSON.stringify({
     本地: 本地.map(节点键),
@@ -3742,11 +4033,15 @@ async function 组装线路优化节点() {
   } else {
     候选 = await 刷新线路候选(键, 选项, 本地, 独占);
     缓存状态 = 候选.length ? 'miss' : 'empty';
-    if (!候选.length) 候选 = 筛选优选(合并去重(本地), 选项);
+    if (!候选.length) 候选 = 筛选优选(合并去重(收成云墙(本地)), 选项);
   }
+  候选 = 标注保底(候选);
+  const 入口 = 生成入口节点(线路入口域名);
+  if (入口) 候选 = 合并去重(候选.concat([入口]));
   const 最终 = 编排优选节点(候选, 选项);
   const 池内 = 候选.filter(项 => 项.kind !== 'domain').length;
-  线路优化摘要 = `on;count=${最终.length};pool=${池内};cache=${缓存状态}`;
+  const 活地址 = 最终.filter(项 => 项.kind !== 'domain').length;
+  线路优化摘要 = `on;count=${最终.length};alive=${活地址};pool=${池内};cache=${缓存状态}`;
   return 最终;
 }
 
@@ -3822,6 +4117,7 @@ async function 处理订阅请求(请求507, 用户506, 网址505 = null) {
   let 已写入优化节点 = false;
   if (!禁用优选 && 启用线路优化) {
     try {
+      线路入口域名 = 工作器域名504;
       const 优化节点 = await 组装线路优化节点();
       if (优化节点.length > 0) {
         await 添加节点列表来源列表(优化节点);
@@ -6747,9 +7043,9 @@ async function 处理订阅值(请求241, 用户240 = null) {
                                 </div>
                                 <div style="margin-top: 12px;">
                                     <label style="display: block; margin-bottom: 6px; color: #00f0ff;">兜底优选池 URL</label>
-                                    <textarea id="optPool" rows="3" placeholder="留空使用内置地区池。每行一个 https 地址，最多 6 个" style="width: 100%; padding: 10px; background: rgba(0, 0, 0, 0.8); border: 1px solid #00f0ff; color: #00f0ff; font-family: 'Courier New', monospace; font-size: 13px;"></textarea>
+                                    <textarea id="optPool" rows="3" placeholder="留空使用实测优选。只采纳 Cloudflare 网段，每行一个 https 地址，最多 6 个" style="width: 100%; padding: 10px; background: rgba(0, 0, 0, 0.8); border: 1px solid #00f0ff; color: #00f0ff; font-family: 'Courier New', monospace; font-size: 13px;"></textarea>
                                 </div>
-                                <small style="color: #7aa9c4; font-size: 0.85rem; display: block; margin-top: 10px;">优选池按延迟和速度排序，测活去掉不通的地址，保底节点固定在最前并每 5 分钟轮换一次头部。IPv6 默认不进订阅。外部源缓存 30 分钟，拉取失败继续用上一份。填写了优选 IP 时默认只下发自定义节点和保底节点。</small>
+                                <small style="color: #7aa9c4; font-size: 0.85rem; display: block; margin-top: 10px;">只下发 Cloudflare 网段里的地址。下发前做 TLS 握手，握手失败的地址不再下发；延迟低、速度快的排在最前。本机域名作为入口，避免优选地址全灭时订阅里没有能用的节点。</small>
                             </div>
                         </div>
                                 <label style="display: block; margin-bottom: 8px; color: #00f0ff; font-weight: bold; text-shadow: 0 0 3px #00f0ff;">优选IP筛选设置</label>

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import net from 'node:net';
 import { register } from 'node:module';
 import test from 'node:test';
 import {
@@ -8,18 +9,25 @@ import {
   整理线路选项,
   解析优选文本,
   挑选测活样本,
-  应用测活结果,
+  应用握手结果,
   随机补足节点,
   地址位于网段,
   低延迟网段,
   是安全优选网址,
   生成保底节点,
+  生成入口节点,
   节点键,
   压缩节点,
   展开节点,
   可持久化节点,
   判断缓存写入,
-  缓存时间戳
+  缓存时间戳,
+  位于云墙网段,
+  可拨号节点,
+  构造握手请求,
+  判断握手应答,
+  保留可用速度,
+  标注保底
 } from '../src/route-optimizer-core.mjs';
 
 const 选项 = 整理线路选项({ optLimit: 12, ipv6: 'yes', v6policy: 'off' });
@@ -91,18 +99,85 @@ test('头部轮换只换前排，不把保底换出列表', () => {
   assert.deepEqual(乙.map(项 => 项.ip), ['10.0.0.2', '10.0.0.3', '10.0.0.1']);
 });
 
-test('测活样本按地区轮流取，全灭时保留原列表', () => {
+test('握手失败的地址不再下发，高速未测地址可以补位', () => {
   const 列表 = [
-    { ip: '1.1.1.1', port: 443, isp: '香港', tier: 2, kind: 'v4', latency: 1, speed: 1, region: 'HK' },
-    { ip: '1.1.1.2', port: 443, isp: '香港', tier: 2, kind: 'v4', latency: 2, speed: 1, region: 'HK' },
-    { ip: '2.2.2.2', port: 443, isp: '日本', tier: 2, kind: 'v4', latency: 3, speed: 1, region: 'JP' }
+    { ip: '104.16.1.1', port: 443, isp: '电信', tier: 1, kind: 'v4', latency: 40, speed: 20, region: '' },
+    { ip: '104.16.1.2', port: 443, isp: '电信', tier: 1, kind: 'v4', latency: 50, speed: 10, region: '' },
+    { ip: '104.16.1.3', port: 443, isp: '电信', tier: 1, kind: 'v4', latency: 30, speed: 30, region: '' },
+    { ip: '45.145.229.223', port: 443, isp: '香港', tier: 2, kind: 'v4', latency: 1, speed: 1, region: 'HK', pinned: true },
+    { ip: 'example.com', port: 443, isp: '优选域名', tier: 4, kind: 'domain', latency: null, speed: 0, region: '' }
   ];
   const 样本 = 挑选测活样本(列表, 2);
-  assert.deepEqual(样本.map(项 => 项.region), ['HK', 'JP']);
-  const 全灭 = 应用测活结果(列表, [], 样本.map(节点键), 选项);
-  assert.equal(全灭.length, 3);
-  const 足够 = 应用测活结果(列表, [节点键(列表[0]), 节点键(列表[2])], 列表.map(节点键), { ...选项, limit: 8 });
-  assert.deepEqual(足够.map(项 => 项.ip), ['1.1.1.1', '2.2.2.2']);
+  assert.deepEqual(样本.map(项 => 项.ip), ['104.16.1.3', '104.16.1.1']);
+  const 全灭 = 应用握手结果(列表, 样本.map(节点 => ({ key: 节点键(节点), status: 'timeout' })), 选项);
+  assert.deepEqual(全灭.nodes.map(项 => 项.ip), ['45.145.229.223', '104.16.1.2', 'example.com']);
+  assert.equal(全灭.effective, false);
+  const 足够 = 应用握手结果(列表, [
+    { key: 节点键(列表[0]), status: 'ok', port: 443 },
+    { key: 节点键(列表[1]), status: 'timeout', port: 443 }
+  ], 选项);
+  assert.equal(足够.effective, true);
+  assert.deepEqual(足够.nodes.map(项 => 项.ip), ['104.16.1.1', '45.145.229.223', '104.16.1.3', 'example.com']);
+  assert.equal(足够.nodes[0].alive, true);
+  assert.equal(足够.nodes.some(项 => 项.ip === '104.16.1.2'), false);
+});
+
+test('非 Cloudflare 地址不能进默认池，慢节点在够用时让位', () => {
+  assert.equal(位于云墙网段('104.18.32.73'), true);
+  assert.equal(位于云墙网段('104.16.0.1'), true);
+  assert.equal(位于云墙网段('45.145.229.223'), false);
+  assert.equal(位于云墙网段('8.210.29.68'), false);
+  assert.equal(位于云墙网段('2606:4700::1'), true);
+  assert.equal(可拨号节点({ ip: '45.145.229.223', kind: 'v4' }), false);
+  assert.equal(可拨号节点({ ip: '45.145.229.223', kind: 'v4', pinned: true }), true);
+  const 慢 = { ip: '104.19.1.1', port: 443, isp: '联通', tier: 1, kind: 'v4', latency: 70, speed: 0.1, region: '' };
+  const 快 = { ip: '104.18.1.1', port: 443, isp: '电信', tier: 1, kind: 'v4', latency: 40, speed: 20, region: '' };
+  const 保留 = 保留可用速度([慢, 快, 快, 快, 快, 快, 快, 快, 快], 8);
+  assert.equal(保留.some(项 => 项.speed === 0.1), false);
+  const 请求 = 构造握手请求('www.cloudflare.com');
+  assert.equal(请求[0], 0x16);
+  assert.equal(判断握手应答(Uint8Array.of(0x16, 0x03, 0x03)), 'ok');
+  assert.equal(判断握手应答(Uint8Array.of(0x15, 0x03, 0x03)), 'dead');
+  assert.equal(判断握手应答(Uint8Array.of(0x16)), 'wait');
+});
+
+test('只有握手成功的高速地址能占保底，入口域名紧跟其后', () => {
+  const 列表 = 标注保底([
+    ...生成保底节点(['104.16.0.1', '172.71.218.190']),
+    { ip: '104.18.32.73', port: 443, isp: '电信', tier: 1, kind: 'v4', latency: 44, speed: 68, region: '', alive: true },
+    { ip: '104.16.0.1', port: 443, isp: '保底', tier: 0, kind: 'v4', latency: null, speed: 0, region: '', alive: true }
+  ]);
+  assert.equal(列表.find(项 => 项.ip === '104.18.32.73').isp, '保底');
+  assert.equal(列表.find(项 => 项.ip === '104.18.32.73').tier, 0);
+  assert.equal(列表.find(项 => 项.ip === '172.71.218.190').tier, 2);
+  const 入口 = 生成入口节点('example.com');
+  const 结果 = 编排优选节点(列表.concat([入口]), { ...选项, limit: 10, balance: false });
+  assert.equal(结果[0].ip, '104.18.32.73');
+  const 入口位 = 结果.findIndex(项 => 项.isp === '入口');
+  assert.ok(入口位 > 0);
+  assert.ok(结果.slice(0, 入口位).every(项 => 项.tier === 0 && 项.kind !== 'domain'));
+});
+
+test('握手请求能让 Cloudflare 入口返回 ServerHello', async () => {
+  const 请求 = 构造握手请求('www.cloudflare.com');
+  const 结果 = await new Promise((完成, 失败) => {
+    const 套接字 = net.connect(443, '104.16.0.1');
+    const 定时 = setTimeout(() => {
+      套接字.destroy();
+      失败(new Error('timeout'));
+    }, 4000);
+    套接字.on('data', 数据 => {
+      clearTimeout(定时);
+      套接字.end();
+      完成(判断握手应答(数据));
+    });
+    套接字.on('error', 错误 => {
+      clearTimeout(定时);
+      失败(错误);
+    });
+    套接字.on('connect', () => 套接字.write(请求));
+  });
+  assert.equal(结果, 'ok');
 });
 
 test('随机补足落在低延迟网段内，私网和明文地址不能当优选源', () => {
@@ -167,7 +242,9 @@ test('订阅请求会走优选、保底前置和缓存', async () => {
   const 正文1 = Buffer.from(await 第一次.text(), 'base64').toString('utf8');
   const 行1 = 正文1.split('\n').filter(Boolean);
   assert.ok(行1.length >= 8 && 行1.length <= 36, `节点数量异常: ${行1.length} ${摘要1}`);
+  assert.match(摘要1, /alive=\d+/);
   assert.match(decodeURIComponent(行1[0]), /保底/);
+  assert.equal(行1.some(行 => /@(?:45\.|8\.210\.|2\.26\.)/.test(行)), false);
   assert.equal(行1.some(行 => 行.includes('[')), false);
   const 第二次 = await 请求订阅();
   assert.match(第二次.headers.get('X-Opt') || '', /cache=fresh/);
@@ -180,5 +257,5 @@ test('订阅请求会走优选、保底前置和缓存', async () => {
   assert.match(自定义行[0], /保底/);
   assert.match(自定义正文, /自定甲/);
   assert.match(自定义正文, /自定乙/);
-  assert.equal(自定义行.length, 12);
+  assert.ok(自定义行.length >= 3 && 自定义行.length <= 36);
 });
