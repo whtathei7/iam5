@@ -30,7 +30,9 @@ import {
   标注保底,
   扩展备用端口,
   是公网地址,
-  社区节点
+  社区节点,
+  允许访问,
+  重置访问账本
 } from '../src/route-optimizer-core.mjs';
 
 const 选项 = 整理线路选项({ optLimit: 12, ipv6: 'yes', v6policy: 'off' });
@@ -235,6 +237,15 @@ test('优选缓存相同内容不写，随机地址不落盘，探测失败不�
   assert.ok(现在 + 3 * 60 * 1000 - 失败时间 > 30 * 60 * 1000);
 });
 
+test('同一分钟内的访问次数有上限，下一分钟重新计数', () => {
+  重置访问账本();
+  const 现在 = Date.parse('2026-10-09T00:00:00Z');
+  for (let 序 = 0; 序 < 10; 序++) assert.equal(允许访问('sub', 现在, 10), true);
+  assert.equal(允许访问('sub', 现在 + 1000, 10), false);
+  assert.equal(允许访问('page', 现在, 30), true);
+  assert.equal(允许访问('sub', 现在 + 60000, 10), true);
+});
+
 test('套用脚本可重复执行，工人脚本语法保持有效', () => {
   execFileSync(process.execPath, ['scripts/apply-route-optimizer.mjs'], { cwd: new URL('..', import.meta.url) });
   const 一次 = fs.readFileSync(new URL('../_worker.js', import.meta.url));
@@ -242,6 +253,7 @@ test('套用脚本可重复执行，工人脚本语法保持有效', () => {
   const 二次 = fs.readFileSync(new URL('../_worker.js', import.meta.url));
   assert.equal(一次.equals(二次), true);
   assert.match(二次.toString(), /组装线路优化节点/);
+  assert.equal(二次.toString().split('/* ROUTE_OPT_START calm */').length, 3);
   execFileSync(process.execPath, ['--check', '_worker.js'], { cwd: new URL('..', import.meta.url) });
 });
 
@@ -274,4 +286,20 @@ test('订阅请求会走优选、保底前置和缓存', async () => {
   assert.match(自定义正文, /自定乙/);
   assert.equal(自定义行.some(行 => /104\.16\.0\.1/.test(行)), false);
   assert.ok(自定义行.length >= 2 && 自定义行.length <= 8);
+  const 机器人 = await 工人.default.fetch(new Request('https://example.com/robots.txt'), { u: 令牌 }, { waitUntil() {} });
+  assert.equal(机器人.status, 200);
+  assert.match(await 机器人.text(), /Disallow: \//);
+  const 未知 = await 工人.default.fetch(new Request('https://example.com/scan'), { u: 令牌 }, { waitUntil() {} });
+  assert.equal(未知.status, 404);
+  const 未知正文 = await 未知.text();
+  assert.match(未知正文, /这里没有内容/);
+  assert.doesNotMatch(未知正文, /UUID|Not Found|vless/i);
+  const 错误令牌 = await 工人.default.fetch(new Request('https://example.com/351c9981-04b6-4103-aa4b-864aa9c91470/sub'), { u: 令牌 }, { waitUntil() {} });
+  assert.equal(错误令牌.status, 404);
+  assert.match(await 错误令牌.text(), /这里没有内容/);
+  let 末次 = 错误令牌;
+  for (let 序 = 0; 序 < 12; 序++) 末次 = await 请求订阅();
+  assert.equal(末次.status, 429);
+  assert.equal(末次.headers.get('Retry-After'), '60');
+  assert.match(await 末次.text(), /这里没有内容/);
 });

@@ -6,6 +6,7 @@ const 根目录 = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 const 目标 = path.join(根目录, '_worker.js');
 const 核心 = fs.readFileSync(path.join(根目录, 'src/route-optimizer-core.mjs'), 'utf8');
 const 胶水 = fs.readFileSync(path.join(根目录, 'src/route-optimizer-glue.js'), 'utf8');
+const 后台样式 = fs.readFileSync(path.join(根目录, 'src/admin-calm.css'), 'utf8');
 let 源 = fs.readFileSync(目标, 'utf8');
 
 function 包裹(名称, 内容) {
@@ -97,6 +98,21 @@ ${结束}
   源 = 源.slice(0, 起) + 块 + 源.slice(止);
 }
 
+function 套上简洁样式(样式) {
+  const 开始 = '/* ROUTE_OPT_START calm */';
+  const 结束 = '/* ROUTE_OPT_END calm */';
+  const 块 = `${开始}\n${样式.trim()}\n${结束}\n`;
+  if (源.includes(开始)) {
+    const 转义 = 文本 => 文本.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    源 = 源.replace(new RegExp(转义(开始) + '[\\s\\S]*?' + 转义(结束) + '\\n?', 'g'), 块);
+    return;
+  }
+  const 锚 = '        </style>';
+  const 次数 = 源.split(锚).length - 1;
+  if (次数 !== 2) throw new Error('后台样式结束标记数量不对: ' + 次数);
+  源 = 源.split(锚).join(块 + 锚);
+}
+
 const 面板 = `                        <div style="margin-bottom: 15px;">
                                 <label style="display: block; margin-bottom: 8px; color: #00f0ff; font-weight: bold; text-shadow: 0 0 3px #00f0ff;">线路优化</label>
                             <div style="padding: 15px; background: rgba(15, 3, 40, 0.6); border: 1px solid #00f0ff; border-radius: 5px;">
@@ -122,7 +138,7 @@ const 面板 = `                        <div style="margin-bottom: 15px;">
                                         <span>自定义节点合并默认池</span>
                                     </label>
                                 </div>
-                                <div style="color: #9ad7ff; font-size: 12px; line-height: 1.5; margin-bottom: 10px;">移动、联通、电信各自保留实测地址，并带上地区中转和 8443。Worker 握手失败的实测地址仍会下发。</div>
+                                <div class="opt-note" style="font-size: 13px; line-height: 1.6; margin-bottom: 10px;">各运营商单独保留，并附带地区中转与 8443。</div>
                                 <div style="display: flex; flex-wrap: wrap; gap: 12px;">
                                     <div style="min-width: 120px; flex: 1;">
                                         <label style="display: block; margin-bottom: 6px; color: #00f0ff;">下发数量</label>
@@ -247,7 +263,7 @@ const 面板 = `                        <div style="margin-bottom: 15px;">
 写入(
   'fetch-context',
   'async fetch(请求735, 本地值734, 本地值733) {\n    try {\n',
-  'async fetch(请求735, 本地值734, 本地值733) {\n    try {\n      当前环境 = 本地值734 || {};\n      执行上下文 = 本地值733 || null;\n'
+  'async fetch(请求735, 本地值734, 本地值733) {\n    try {\n      当前环境 = 本地值734 || {};\n      执行上下文 = 本地值733 || null;\n      const 访客响应 = 处理访客边界(请求735, 本地值734);\n      if (访客响应) return 访客响应;\n'
 );
 
 写入(
@@ -345,7 +361,78 @@ const 面板 = `                        <div style="margin-bottom: 15px;">
         })`
 );
 
-if (!源.includes('组装线路优化节点') || !源.includes('function 整理线路选项')) {
+写入(
+  'quiet-uuid',
+  `              return new Response(JSON.stringify({
+                error: '访问被拒绝',
+                message: '当前 Worker 已启用自定义路径模式，UUID 访问已禁用'
+              }), {
+                status: 403,
+                headers: {
+                  'Content-Type': 'application/json'
+                }
+              });`,
+  '                return 安静页面(404);'
+);
+
+写入(
+  'quiet-uuid-hint',
+  `                return new Response(JSON.stringify({
+                  error: 'UUID错误 请注意变量名称是u不是uuid'
+                }), {
+                  status: 403,
+                  headers: {
+                    'Content-Type': 'application/json'
+                  }
+                });`,
+  '                return 安静页面(404);'
+);
+
+写入(
+  'quiet-uuid-sub',
+  `                  return new Response(JSON.stringify({
+                    error: 'UUID错误'
+                  }), {
+                    status: 403,
+                    headers: {
+                      'Content-Type': 'application/json'
+                    }
+                  });`,
+  '                  return 安静页面(404);'
+);
+
+写入(
+  'quiet-early',
+  `          return new Response('Not Found', {
+            status: 404
+          });`,
+  '          return 安静页面(404);'
+);
+
+写入(
+  'quiet-404',
+  `      return new Response(JSON.stringify({
+        error: 'Not Found'
+      }), {
+        status: 404,
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });`,
+  '      return 安静页面(404);'
+);
+
+写入(
+  'quiet-500',
+  `      return new Response(错误655.toString(), {
+        status: 500
+      });`,
+  '      return 安静页面(500);'
+);
+
+套上简洁样式(后台样式);
+
+if (!源.includes('组装线路优化节点') || !源.includes('function 整理线路选项') || 源.split('/* ROUTE_OPT_START calm */').length !== 3) {
   throw new Error('线路优化代码没有写进 _worker.js');
 }
 fs.writeFileSync(目标, 源);

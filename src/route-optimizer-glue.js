@@ -437,3 +437,44 @@ async function 组装线路优化节点() {
   线路优化摘要 = `on;count=${最终.length};alive=${活地址};pool=${池内};cache=${缓存状态}`;
   return 最终;
 }
+
+function 安静页面(状态 = 404) {
+  const 页 = '<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>页面</title></head><body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f4f1ea;color:#1c2430;font-family:sans-serif"><p>这里没有内容。</p></body></html>';
+  const 头 = { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' };
+  if (状态 === 429) 头['Retry-After'] = '60';
+  return new Response(页, { status: 状态, headers: 头 });
+}
+
+function 处理访客边界(请求, 环境 = {}) {
+  let 网址;
+  try {
+    网址 = new URL(请求.url);
+  } catch (错误) {
+    return 安静页面(404);
+  }
+  if (请求.method === 'GET' && 网址.pathname === '/robots.txt') {
+    return new Response('User-agent: *\nDisallow: /\n', {
+      status: 200,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=86400' }
+    });
+  }
+  if ((请求.headers.get('Upgrade') || '').toLowerCase() === 'websocket') return null;
+  if (请求.method === 'POST') return null;
+  const 环境令牌 = String((环境 && (环境.u || 环境.U)) || '').trim();
+  const 令牌 = (环境令牌 || (typeof 认证令牌 === 'string' ? 认证令牌 : '')).toLowerCase();
+  const 自定义 = String((环境 && (环境.d || 环境.D)) || '').trim().toLowerCase().replace(/^\//, '');
+  const 段 = 网址.pathname.split('/').filter(Boolean);
+  const 首段 = (段[0] || '').toLowerCase();
+  const 命中 = Boolean(首段) && (首段 === 令牌 || (自定义 && 首段 === 自定义));
+  if (网址.pathname !== '/' && !命中) return 安静页面(404);
+  const 是管理 = 段.some(段名 => {
+    const 名称 = 段名.toLowerCase();
+    return 名称 === 'api' || 名称 === 'region' || 名称 === 'test-api';
+  });
+  const 是页面 = 网址.pathname === '/' || (段.length === 1 && 命中);
+  const 是订阅 = 命中 && !是页面 && !是管理;
+  if (!是订阅 && !是页面) return null;
+  const 上限 = 是订阅 ? 10 : 30;
+  if (!允许访问(是订阅 ? 'sub' : 'page', Date.now(), 上限)) return 安静页面(429);
+  return null;
+}

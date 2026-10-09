@@ -846,3 +846,22 @@ export function 并发映射(列表, 并发, 任务) {
   const 人数 = Math.max(1, Math.min(并发 || 1, 列表.length || 1));
   return Promise.all(Array.from({ length: 列表.length ? 人数 : 0 }, () => 工人())).then(() => 结果);
 }
+
+const 访问账本 = new Map();
+
+export function 重置访问账本() {
+  访问账本.clear();
+}
+
+export function 允许访问(种类, 现在, 上限 = 10, 窗口毫秒 = 60000) {
+  const 窗口 = Math.floor(现在 / 窗口毫秒);
+  const 键 = `${种类}|${窗口}`;
+  const 次数 = (访问账本.get(键) || 0) + 1;
+  访问账本.set(键, 次数);
+  if (访问账本.size > 6) {
+    for (const 旧键 of 访问账本.keys()) {
+      if (!String(旧键).endsWith('|' + 窗口)) 访问账本.delete(旧键);
+    }
+  }
+  return 次数 <= 上限;
+}
