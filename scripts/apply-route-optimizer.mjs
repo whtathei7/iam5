@@ -122,6 +122,7 @@ const 面板 = `                        <div style="margin-bottom: 15px;">
                                         <span>自定义节点合并默认池</span>
                                     </label>
                                 </div>
+                                <div style="color: #9ad7ff; font-size: 12px; line-height: 1.5; margin-bottom: 10px;">移动、联通、电信各自保留实测地址，并带上地区中转和 8443。Worker 握手失败的实测地址仍会下发。</div>
                                 <div style="display: flex; flex-wrap: wrap; gap: 12px;">
                                     <div style="min-width: 120px; flex: 1;">
                                         <label style="display: block; margin-bottom: 6px; color: #00f0ff;">下发数量</label>

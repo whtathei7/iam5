@@ -27,7 +27,10 @@ import {
   构造握手请求,
   判断握手应答,
   保留可用速度,
-  标注保底
+  标注保底,
+  扩展备用端口,
+  是公网地址,
+  社区节点
 } from '../src/route-optimizer-core.mjs';
 
 const 选项 = 整理线路选项({ optLimit: 12, ipv6: 'yes', v6policy: 'off' });
@@ -99,41 +102,46 @@ test('头部轮换只换前排，不把保底换出列表', () => {
   assert.deepEqual(乙.map(项 => 项.ip), ['10.0.0.2', '10.0.0.3', '10.0.0.1']);
 });
 
-test('握手失败的地址不再下发，高速未测地址可以补位', () => {
+test('移动和中转不会被电信挤掉，Worker 握手失败也不丢掉实测地址', () => {
   const 列表 = [
-    { ip: '104.16.1.1', port: 443, isp: '电信', tier: 1, kind: 'v4', latency: 40, speed: 20, region: '' },
-    { ip: '104.16.1.2', port: 443, isp: '电信', tier: 1, kind: 'v4', latency: 50, speed: 10, region: '' },
-    { ip: '104.16.1.3', port: 443, isp: '电信', tier: 1, kind: 'v4', latency: 30, speed: 30, region: '' },
-    { ip: '45.145.229.223', port: 443, isp: '香港', tier: 2, kind: 'v4', latency: 1, speed: 1, region: 'HK', pinned: true },
+    { ip: '104.16.1.1', port: 443, isp: '电信', tier: 1, kind: 'v4', latency: 40, speed: 20, region: '', sourced: true },
+    { ip: '104.16.1.2', port: 443, isp: '电信', tier: 1, kind: 'v4', latency: 50, speed: 10, region: '', sourced: true },
+    { ip: '104.16.1.3', port: 443, isp: '电信', tier: 1, kind: 'v4', latency: 30, speed: 30, region: '', sourced: true },
+    { ip: '104.17.1.9', port: 443, isp: '移动', tier: 1, kind: 'v4', latency: 55, speed: 0.2, region: '', sourced: true },
+    { ip: '68.64.183.37', port: 8443, isp: '香港', tier: 2, kind: 'v4', latency: null, speed: 0, region: 'HK', relay: true, sourced: true },
+    { ip: '104.19.9.9', port: 443, isp: '随机补足', tier: 5, kind: 'v4', latency: null, speed: 0, region: '' },
     { ip: 'example.com', port: 443, isp: '优选域名', tier: 4, kind: 'domain', latency: null, speed: 0, region: '' }
   ];
   const 样本 = 挑选测活样本(列表, 2);
-  assert.deepEqual(样本.map(项 => 项.ip), ['104.16.1.3', '104.16.1.1']);
-  const 全灭 = 应用握手结果(列表, 样本.map(节点 => ({ key: 节点键(节点), status: 'timeout' })), 选项);
-  assert.deepEqual(全灭.nodes.map(项 => 项.ip), ['45.145.229.223', '104.16.1.2', 'example.com']);
-  assert.equal(全灭.effective, false);
-  const 足够 = 应用握手结果(列表, [
-    { key: 节点键(列表[0]), status: 'ok', port: 443 },
-    { key: 节点键(列表[1]), status: 'timeout', port: 443 }
-  ], 选项);
-  assert.equal(足够.effective, true);
-  assert.deepEqual(足够.nodes.map(项 => 项.ip), ['104.16.1.1', '45.145.229.223', '104.16.1.3', 'example.com']);
-  assert.equal(足够.nodes[0].alive, true);
-  assert.equal(足够.nodes.some(项 => 项.ip === '104.16.1.2'), false);
+  assert.deepEqual(样本.map(项 => 项.ip), ['104.16.1.3', '104.17.1.9']);
+  const 全灭 = 应用握手结果(列表, 列表.filter(节点 => 节点.kind !== 'domain').map(节点 => ({ key: 节点键(节点), status: 'timeout', port: 节点.port })), 选项);
+  assert.equal(全灭.effective, true);
+  assert.deepEqual(全灭.nodes.map(项 => 项.ip), ['104.16.1.1', '104.16.1.2', '104.16.1.3', '104.17.1.9', '68.64.183.37', 'example.com']);
+  assert.equal(社区节点(列表[4]), true);
+  assert.equal(社区节点(列表[5]), false);
+  const 电信 = Array.from({ length: 8 }, (_, 序) => ({ ip: `104.18.2.${序 + 1}`, port: 443, isp: '电信', tier: 1, kind: 'v4', latency: 40, speed: 20, region: '' }));
+  const 保留 = 保留可用速度(电信.concat([列表[3], 列表[4]]), 4);
+  assert.equal(保留.some(项 => 项.isp === '移动'), true);
+  assert.equal(保留.some(项 => 项.relay), true);
+  const 联通实测 = { ip: '104.26.0.79', port: 443, isp: '联通', tier: 1, kind: 'v4', latency: 68, speed: 0.1, region: '' };
+  const 同地址 = { ip: '198.41.208.168', port: 443, isp: '联通', tier: 1, kind: 'v4', latency: null, speed: 0, region: '' };
+  const 留下 = 保留可用速度([联通实测, 同地址], 4);
+  assert.equal(留下.some(项 => 项.ip === '104.26.0.79'), true);
+  const 备用 = 扩展备用端口([{ ip: '104.18.32.73', port: 443, isp: '电信', tier: 1, kind: 'v4', latency: 44, speed: 68, region: '' }]);
+  assert.equal(备用.some(项 => 项.port === 8443), true);
 });
 
-test('非 Cloudflare 地址不能进默认池，慢节点在够用时让位', () => {
+test('私网地址不能下发，社区中转可以，电信再快也留移动节点', () => {
   assert.equal(位于云墙网段('104.18.32.73'), true);
   assert.equal(位于云墙网段('104.16.0.1'), true);
-  assert.equal(位于云墙网段('45.145.229.223'), false);
-  assert.equal(位于云墙网段('8.210.29.68'), false);
+  assert.equal(位于云墙网段('68.64.183.37'), false);
   assert.equal(位于云墙网段('2606:4700::1'), true);
-  assert.equal(可拨号节点({ ip: '45.145.229.223', kind: 'v4' }), false);
+  assert.equal(是公网地址('10.1.1.1'), false);
+  assert.equal(是公网地址('68.64.183.37'), true);
+  assert.equal(可拨号节点({ ip: '68.64.183.37', kind: 'v4' }), false);
+  assert.equal(可拨号节点({ ip: '68.64.183.37', kind: 'v4', relay: true }), true);
+  assert.equal(可拨号节点({ ip: '10.1.1.1', kind: 'v4', relay: true }), false);
   assert.equal(可拨号节点({ ip: '45.145.229.223', kind: 'v4', pinned: true }), true);
-  const 慢 = { ip: '104.19.1.1', port: 443, isp: '联通', tier: 1, kind: 'v4', latency: 70, speed: 0.1, region: '' };
-  const 快 = { ip: '104.18.1.1', port: 443, isp: '电信', tier: 1, kind: 'v4', latency: 40, speed: 20, region: '' };
-  const 保留 = 保留可用速度([慢, 快, 快, 快, 快, 快, 快, 快, 快], 8);
-  assert.equal(保留.some(项 => 项.speed === 0.1), false);
   const 请求 = 构造握手请求('www.cloudflare.com');
   assert.equal(请求[0], 0x16);
   assert.equal(判断握手应答(Uint8Array.of(0x16, 0x03, 0x03)), 'ok');
@@ -141,21 +149,28 @@ test('非 Cloudflare 地址不能进默认池，慢节点在够用时让位', ()
   assert.equal(判断握手应答(Uint8Array.of(0x16)), 'wait');
 });
 
-test('只有握手成功的高速地址能占保底，入口域名紧跟其后', () => {
+test('每个运营商各留一个保底，入口域名紧跟这组地址', () => {
   const 列表 = 标注保底([
     ...生成保底节点(['104.16.0.1', '172.71.218.190']),
     { ip: '104.18.32.73', port: 443, isp: '电信', tier: 1, kind: 'v4', latency: 44, speed: 68, region: '', alive: true },
-    { ip: '104.16.0.1', port: 443, isp: '保底', tier: 0, kind: 'v4', latency: null, speed: 0, region: '', alive: true }
+    { ip: '104.17.1.8', port: 443, isp: '移动', tier: 1, kind: 'v4', latency: 51, speed: 0.2, region: '', alive: true },
+    { ip: '1.2.3.4', port: 443, isp: '自定甲', tier: 1, kind: 'v4', latency: null, speed: 0, region: '', pinned: true }
   ]);
-  assert.equal(列表.find(项 => 项.ip === '104.18.32.73').isp, '保底');
-  assert.equal(列表.find(项 => 项.ip === '104.18.32.73').tier, 0);
+  assert.equal(列表.find(项 => 项.ip === '104.18.32.73').isp, '保底·电信');
+  assert.equal(列表.find(项 => 项.ip === '104.17.1.8').isp, '保底·移动');
+  assert.equal(列表.find(项 => 项.ip === '1.2.3.4').isp, '自定甲');
   assert.equal(列表.find(项 => 项.ip === '172.71.218.190').tier, 2);
   const 入口 = 生成入口节点('example.com');
   const 结果 = 编排优选节点(列表.concat([入口]), { ...选项, limit: 10, balance: false });
-  assert.equal(结果[0].ip, '104.18.32.73');
+  assert.equal(结果[0].isp, '保底·移动');
   const 入口位 = 结果.findIndex(项 => 项.isp === '入口');
   assert.ok(入口位 > 0);
   assert.ok(结果.slice(0, 入口位).every(项 => 项.tier === 0 && 项.kind !== 'domain'));
+  const 交错 = 编排优选节点([
+    { ip: '104.18.1.1', port: 443, isp: '电信', tier: 1, kind: 'v4', latency: 10, speed: 50, region: '' },
+    { ip: '104.17.1.1', port: 443, isp: '移动', tier: 1, kind: 'v4', latency: 80, speed: 0.2, region: '' }
+  ], { ...选项, limit: 2, balance: false });
+  assert.deepEqual(交错.map(项 => 项.isp), ['移动', '电信']);
 });
 
 test('握手请求能让 Cloudflare 入口返回 ServerHello', async () => {
@@ -243,9 +258,10 @@ test('订阅请求会走优选、保底前置和缓存', async () => {
   const 行1 = 正文1.split('\n').filter(Boolean);
   assert.ok(行1.length >= 8 && 行1.length <= 36, `节点数量异常: ${行1.length} ${摘要1}`);
   assert.match(摘要1, /alive=\d+/);
-  assert.match(decodeURIComponent(行1[0]), /保底/);
-  assert.equal(行1.some(行 => /@(?:45\.|8\.210\.|2\.26\.)/.test(行)), false);
+  assert.match(decodeURIComponent(行1[0]), /保底|移动|联通|电信|香港|台湾|日本/);
+  assert.equal(行1.some(行 => /@(?:10\.|127\.|192\.168\.|0\.0\.0\.0)/.test(行)), false);
   assert.equal(行1.some(行 => 行.includes('[')), false);
+  assert.match(摘要1, /alive=[1-9]/);
   const 第二次 = await 请求订阅();
   assert.match(第二次.headers.get('X-Opt') || '', /cache=fresh/);
   const 自定义 = await 工人.default.fetch(new Request(`https://example.com/${令牌}/sub`), {
@@ -254,8 +270,8 @@ test('订阅请求会走优选、保底前置和缓存', async () => {
   }, { waitUntil() {} });
   const 自定义正文 = decodeURIComponent(Buffer.from(await 自定义.text(), 'base64').toString('utf8'));
   const 自定义行 = 自定义正文.split('\n').filter(Boolean);
-  assert.match(自定义行[0], /保底/);
   assert.match(自定义正文, /自定甲/);
   assert.match(自定义正文, /自定乙/);
-  assert.ok(自定义行.length >= 3 && 自定义行.length <= 36);
+  assert.equal(自定义行.some(行 => /104\.16\.0\.1/.test(行)), false);
+  assert.ok(自定义行.length >= 2 && 自定义行.length <= 8);
 });

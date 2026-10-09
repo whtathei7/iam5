@@ -2922,22 +2922,27 @@ async function 生成家宽链式值(链接列表) {
 
 /* ROUTE_OPT_START module */
 // 线路优化的纯逻辑。订阅生成时由 _worker.js 调用，单测直接引用本文件。
-// 思路借鉴 CFNext：实测优选优先、只保留 Cloudflare 网段、TLS 握手测活、保底前置、IPv6 后置、头部轮换。
+// 思路借鉴 CFNext：按运营商保留实测节点、放行社区中转、备用端口、保底前置、IPv6 后置、头部轮换。
+// Worker 上的握手只能证明 Cloudflare 边缘自己能连，不能据此丢掉用户侧已经测过速度的地址。
 // 实现独立，不复制其源码。
 
-export const 内置地区代码 = ['JP', 'SG', 'US'];
+export const 内置地区代码 = ['HK', 'TW', 'JP', 'SG', 'US', 'KR'];
 export const 地区云墙源 = {
-  JP: 'https://bestcf.pages.dev/gslege/JP.txt',
-  SG: 'https://bestcf.pages.dev/gslege/SG.txt',
-  US: 'https://bestcf.pages.dev/gslege/US.txt',
-  DE: 'https://bestcf.pages.dev/gslege/DE.txt'
+  HK: 'https://bestcf.pages.dev/random-region/HK/20.txt',
+  TW: 'https://bestcf.pages.dev/random-region/TW/20.txt',
+  JP: 'https://bestcf.pages.dev/random-region/JP/20.txt',
+  SG: 'https://bestcf.pages.dev/random-region/SG/20.txt',
+  US: 'https://bestcf.pages.dev/random-region/US/20.txt',
+  KR: 'https://bestcf.pages.dev/random-region/KR/20.txt',
+  DE: 'https://bestcf.pages.dev/random-region/DE/20.txt'
 };
 export const 实测优选源 = [
   'https://bestcf.pages.dev/uouin/all.txt',
   'https://bestcf.pages.dev/cfyes/ipv4.txt'
 ];
-export const 入口优选源 = 'https://bestcf.pages.dev/entryip/50.txt';
+export const 优选域名源 = 'https://bestcf.pages.dev/domain/all.txt';
 export const 六版优选源 = 'https://bestcf.pages.dev/cfyes/ipv6.txt';
+export const 运营商顺序 = ['移动', '联通', '电信', '多线', '中转', '其他'];
 export const 云墙安全端口 = [443, 2053, 2083, 2087, 2096, 8443];
 export const 云墙明文端口 = [80, 8080, 8880, 2052, 2082, 2086, 2095];
 export const 云墙四版网段 = [
@@ -3143,16 +3148,58 @@ export function 位于云墙网段(地址) {
   return false;
 }
 
+export function 是公网地址(地址) {
+  const 种类 = 地址种类(地址);
+  if (种类 === 'v6') {
+    const 段 = 展开六版(地址);
+    if (!段) return false;
+    if (段.every(节 => 节 === 0)) return false;
+    if (段[0] === 0 && 段.slice(1, 7).every(节 => 节 === 0) && 段[7] === 1) return false;
+    if (段[0] >= 0xfe80 && 段[0] <= 0xfebf) return false;
+    if ((段[0] & 0xfe00) === 0xfc00) return false;
+    if ((段[0] & 0xff00) === 0xff00) return false;
+    return true;
+  }
+  if (种类 !== 'v4') return false;
+  const 段 = 地址.split('.').map(Number);
+  const [甲, 乙] = 段;
+  if (段.some(节 => 节 > 255) || 甲 === 0 || 甲 === 10 || 甲 === 127 || 甲 >= 224) return false;
+  if (甲 === 100 && 乙 >= 64 && 乙 <= 127) return false;
+  if (甲 === 169 && 乙 === 254) return false;
+  if (甲 === 172 && 乙 >= 16 && 乙 <= 31) return false;
+  if (甲 === 192 && (乙 === 168 || 乙 === 0)) return false;
+  if (甲 === 198 && (乙 === 18 || 乙 === 19 || 乙 === 51)) return false;
+  if (甲 === 203 && 乙 === 0) return false;
+  return true;
+}
+
 export function 可拨号节点(节点, 允许外部 = false) {
   if (!节点 || !节点.ip || !节点.kind) return false;
   if (节点.kind === 'domain') return true;
-  if (允许外部 || 节点.pinned) return true;
+  if (!是公网地址(节点.ip)) return false;
+  if (允许外部 || 节点.pinned || 节点.relay) return true;
   return 位于云墙网段(节点.ip);
 }
 
-export function 速度可用(节点) {
-  if (!节点 || !节点.speed) return true;
-  return 节点.speed >= 1;
+export function 运营商名(节点) {
+  const 名 = String((节点 && 节点.isp) || '');
+  if (名.includes('移动')) return '移动';
+  if (名.includes('联通')) return '联通';
+  if (名.includes('电信')) return '电信';
+  if (名.includes('多线')) return '多线';
+  if (节点 && (节点.relay || 节点.region)) return '中转';
+  return '其他';
+}
+
+export function 分组键(节点) {
+  if (!节点 || 节点.kind === 'domain') return '域名';
+  if (节点.pinned) return '自定义';
+  if (节点.relay) return `中转:${节点.region || 节点.isp || 'XX'}`;
+  return 运营商名(节点);
+}
+
+export function 社区节点(节点) {
+  return !!(节点 && 节点.tier !== 5 && (节点.sourced || 节点.relay || 节点.pinned || 节点.latency != null || 节点.speed > 0));
 }
 
 export function 地址种类(地址) {
@@ -3301,63 +3348,89 @@ export function 筛选优选(列表, 选项) {
 }
 
 export function 挑选测活样本(列表, 上限 = 16) {
-  const 地址 = (列表 || []).filter(节点 => 节点 && 节点.kind !== 'domain');
-  const 快 = 地址.filter(节点 => 节点.speed >= 1).sort(比较优选);
-  const 入口 = 地址.filter(节点 => 节点.tier === 0 && !(节点.speed >= 1));
-  const 其余 = 地址.filter(节点 => 节点.tier !== 0 && !(节点.speed >= 1)).sort(比较优选);
+  const 地址 = (列表 || []).filter(节点 => 节点 && 节点.kind !== 'domain' && 节点.tier !== 5);
+  const 随机 = (列表 || []).filter(节点 => 节点 && 节点.tier === 5);
+  const 组 = new Map();
+  for (const 节点 of 地址) {
+    const 键 = 分组键(节点);
+    if (!组.has(键)) 组.set(键, []);
+    组.get(键).push(节点);
+  }
+  for (const 节点列 of 组.values()) 节点列.sort(比较优选);
   const 选出 = [];
   const 已见 = new Set();
   const 放入 = 节点 => {
-    if (选出.length >= 上限) return;
+    if (!节点 || 选出.length >= 上限) return;
     const 键 = 节点键(节点);
     if (已见.has(键)) return;
     已见.add(键);
     选出.push(节点);
   };
-  const 入口名额 = Math.min(4, Math.floor(上限 / 4));
-  快.slice(0, 上限 - 入口名额).forEach(放入);
-  入口.slice(0, 入口名额).forEach(放入);
-  其余.forEach(放入);
-  快.forEach(放入);
+  const 列 = [...组.values()];
+  let 轮 = 0;
+  while (选出.length < 上限 && 列.some(项 => 项.length > 轮)) {
+    for (const 项 of 列) 放入(项[轮]);
+    轮++;
+  }
+  随机.forEach(放入);
   return 选出;
 }
 
-export function 保留可用速度(列表, 最少 = 8) {
-  const 快 = [];
-  const 慢 = [];
+export function 保留可用速度(列表, 每家 = 4) {
+  const 组 = new Map();
   for (const 节点 of 列表 || []) {
     if (!节点) continue;
-    if (节点.kind === 'domain' || 节点.pinned || 速度可用(节点)) 快.push(节点);
-    else 慢.push(节点);
+    const 键 = 分组键(节点);
+    if (!组.has(键)) 组.set(键, []);
+    组.get(键).push(节点);
   }
-  const 地址数 = 快.filter(节点 => 节点.kind !== 'domain').length;
-  if (地址数 >= 最少) return 快;
-  return 快.concat(慢);
+  const 结果 = [];
+  const 上限 = Math.max(每家, 6);
+  for (const [键, 节点列] of 组) {
+    if (键 === '域名' || 键 === '自定义') {
+      结果.push(...节点列);
+      continue;
+    }
+    const 排序 = 节点列.slice().sort(比较优选);
+    const 快 = 排序.filter(节点 => 节点.relay || 节点.speed >= 1);
+    const 慢 = 排序.filter(节点 => !节点.relay && 节点.speed > 0 && 节点.speed < 1);
+    const 未知 = 排序.filter(节点 => !节点.relay && !(节点.speed > 0));
+    const 主体 = 快.length >= 每家 ? 快 : 快.concat(慢);
+    结果.push(...主体.concat(未知).slice(0, 上限));
+  }
+  return 结果;
 }
 
 export function 应用握手结果(列表, 探测, 选项, 严格 = false) {
   const 原文 = 列表 || [];
   if (!选项 || !选项.probe) return { nodes: 原文, effective: true };
   const 表 = new Map((探测 || []).filter(项 => 项 && 项.key).map(项 => [项.key, 项]));
-  if (!表.size) return { nodes: 严格 ? 原文.filter(节点 => 节点.kind === 'domain') : 原文, effective: false };
-  const 域名 = 原文.filter(节点 => 节点.kind === 'domain');
-  const 地址 = 原文.filter(节点 => 节点.kind !== 'domain');
-  const 活 = [];
-  for (const 节点 of 地址) {
+  if (!表.size) {
+    const 节点 = 严格 ? 原文.filter(项 => 项 && (项.kind === 'domain' || 社区节点(项))) : 原文;
+    return { nodes: 节点, effective: 节点.some(项 => 项 && 项.kind !== 'domain' && 社区节点(项)) };
+  }
+  const 留下 = [];
+  for (const 节点 of 原文) {
+    if (!节点) continue;
+    if (节点.kind === 'domain') {
+      留下.push(节点);
+      continue;
+    }
     const 结果 = 表.get(节点键(节点));
-    if (结果 && 结果.status === 'ok') 活.push({ ...节点, port: 结果.port || 节点.port || 443, alive: true });
+    if (!结果) {
+      if (严格 && !社区节点(节点)) continue;
+      留下.push(节点);
+      continue;
+    }
+    if (结果.status === 'ok') {
+      留下.push({ ...节点, port: 结果.port || 节点.port || 443, alive: true });
+      continue;
+    }
+    if (节点.tier === 5) continue;
+    if (社区节点(节点)) 留下.push(节点);
   }
-  const 钉住 = 地址.filter(节点 => 节点.pinned && !表.has(节点键(节点)));
-  if (活.length) {
-    const 未测 = 严格 ? [] : 地址.filter(节点 => {
-      if (表.has(节点键(节点)) || 节点.pinned || 节点.tier === 5) return false;
-      return 位于云墙网段(节点.ip) && 节点.speed >= 5;
-    });
-    return { nodes: 合并去重(活.concat(钉住, 未测, 域名)), effective: true };
-  }
-  if (严格) return { nodes: 合并去重(钉住.concat(域名)), effective: false };
-  const 未测 = 地址.filter(节点 => !表.has(节点键(节点)) && 节点.tier !== 5 && 位于云墙网段(节点.ip) && 节点.speed >= 1);
-  return { nodes: 合并去重(钉住.concat(未测, 域名)), effective: false };
+  const 节点 = 合并去重(留下);
+  return { nodes: 节点, effective: 节点.some(项 => 项.kind !== 'domain' && (项.alive || 社区节点(项))) };
 }
 
 function 拼接字节(...块) {
@@ -3419,26 +3492,67 @@ export function 判断握手应答(数据) {
 }
 
 export function 标注保底(列表) {
-  const 四版 = (列表 || []).filter(节点 => 节点 && 节点.kind === 'v4');
-  const 有存活 = 四版.some(节点 => 节点.alive);
-  const 可当保底 = 节点 => !有存活 || 节点.alive;
-  const 快 = 四版.filter(节点 => 可当保底(节点) && 节点.speed >= 5).sort(比较优选);
-  const 入口 = 四版.filter(节点 => 可当保底(节点) && 实测入口地址.includes(节点.ip));
-  const 候选 = 快.length >= 4 ? 快 : 入口.concat(快);
+  const 四版 = (列表 || []).filter(节点 => 节点 && 节点.kind === 'v4' && 节点.tier !== 5);
   const 保底键 = new Set();
-  for (const 节点 of 候选) {
-    保底键.add(节点键(节点));
-    if (保底键.size >= 8) break;
+  for (const 运营商 of 运营商顺序) {
+    const 候选 = 四版.filter(节点 => !节点.pinned && 运营商名(节点) === 运营商).sort(比较优选);
+    if (候选[0]) 保底键.add(节点键(候选[0]));
   }
   return (列表 || []).map(节点 => {
     if (!节点) return 节点;
     if (节点.isp === '入口') return { ...节点, tier: 0 };
-    if (保底键.has(节点键(节点))) return { ...节点, tier: 0, isp: '保底' };
+    if (节点.pinned) return { ...节点, tier: 0 };
+    if (保底键.has(节点键(节点))) {
+      const 名 = 运营商名(节点);
+      const 前缀 = 名 === '其他' || 名 === '中转' ? '保底' : `保底·${名}`;
+      return { ...节点, tier: 0, isp: 前缀 };
+    }
     if (节点.tier === 0 && 节点.kind !== 'domain') {
       return { ...节点, tier: 2, isp: 节点.isp === '保底' ? '入口IP' : 节点.isp };
     }
     return 节点;
   });
+}
+
+export function 扩展备用端口(列表) {
+  const 额外 = [];
+  const 已见 = new Set((列表 || []).map(节点键));
+  const 按家 = new Map();
+  for (const 节点 of 列表 || []) {
+    if (!节点 || 节点.kind !== 'v4' || 节点.tier === 5 || 节点.relay || 节点.pinned) continue;
+    if (节点.port !== 443 || !位于云墙网段(节点.ip)) continue;
+    const 家 = 运营商名(节点);
+    if (!按家.has(家)) 按家.set(家, []);
+    按家.get(家).push(节点);
+  }
+  for (const 节点列 of 按家.values()) {
+    const 头 = 节点列.slice().sort(比较优选)[0];
+    if (!头) continue;
+    const 副本 = {
+      ...头,
+      port: 8443,
+      isp: `${头.isp || '优选'}·8443`,
+      tier: Math.min(4, (头.tier || 1) + 1)
+    };
+    const 键 = 节点键(副本);
+    if (已见.has(键)) continue;
+    已见.add(键);
+    额外.push(副本);
+  }
+  return (列表 || []).concat(额外);
+}
+
+export function 入口补位(列表, 至少 = 8) {
+  const 现有 = 列表 || [];
+  const 已有 = new Set(现有.filter(节点 => 节点 && 节点.kind === 'v4').map(节点 => 节点.ip));
+  if (已有.size >= 至少) return 现有;
+  const 补 = [];
+  for (const 地址 of 实测入口地址) {
+    if (已有.has(地址)) continue;
+    补.push(...生成保底节点([地址]));
+    if (已有.size + 补.length >= 至少) break;
+  }
+  return 现有.concat(补);
 }
 
 export function 生成入口节点(域名) {
@@ -3455,13 +3569,50 @@ export function 轮换序列(列表, 现在 = Date.now(), 窗口 = 8, 间隔毫�
   return 列表.slice(偏移).concat(列表.slice(0, 偏移));
 }
 
+function 按地区交错(列表) {
+  const 组 = new Map();
+  for (const 节点 of 列表 || []) {
+    const 键 = 节点.region || 节点.isp || 'XX';
+    if (!组.has(键)) 组.set(键, []);
+    组.get(键).push(节点);
+  }
+  for (const 节点列 of 组.values()) 节点列.sort(比较优选);
+  const 列 = [...组.values()];
+  const 结果 = [];
+  const 最大 = Math.max(0, ...列.map(项 => 项.length));
+  for (let 索引 = 0; 索引 < 最大; 索引++) {
+    for (const 节点列 of 列) if (节点列[索引]) 结果.push(节点列[索引]);
+  }
+  return 结果;
+}
+
+function 按运营商交错(列表) {
+  const 分组 = new Map(运营商顺序.map(名 => [名, []]));
+  for (const 节点 of 列表 || []) {
+    const 名 = 运营商名(节点);
+    if (!分组.has(名)) 分组.set(名, []);
+    分组.get(名).push(节点);
+  }
+  for (const [名, 节点列] of 分组) {
+    if (名 === '中转') 分组.set(名, 按地区交错(节点列));
+    else 节点列.sort(比较优选);
+  }
+  const 列 = [...分组.values()];
+  const 结果 = [];
+  const 最大 = Math.max(0, ...列.map(项 => 项.length));
+  for (let 索引 = 0; 索引 < 最大; 索引++) {
+    for (const 节点列 of 列) if (节点列[索引]) 结果.push(节点列[索引]);
+  }
+  return 结果;
+}
+
 export function 编排优选节点(列表, 选项, 现在 = Date.now()) {
   const 四版开启 = 选项.ipv4 || !选项.ipv6;
   const 筛选 = 筛选优选(合并去重(列表), 选项);
-  const 保底 = 筛选.filter(节点 => 节点.tier === 0 && 节点.kind !== 'domain').sort(比较优选);
+  const 保底 = 按运营商交错(筛选.filter(节点 => 节点.tier === 0 && 节点.kind !== 'domain'));
   const 入口 = 筛选.filter(节点 => 节点.isp === '入口');
   const 域名 = 筛选.filter(节点 => 节点.kind === 'domain' && 节点.isp !== '入口');
-  const 四版 = 筛选.filter(节点 => 节点.kind === 'v4' && 节点.tier !== 0).sort(比较优选);
+  const 四版 = 按运营商交错(筛选.filter(节点 => 节点.kind === 'v4' && 节点.tier !== 0));
   const 六版 = 筛选.filter(节点 => 节点.kind === 'v6').sort(比较优选);
   const 保底序 = 选项.balance ? 轮换序列(保底, 现在, Math.min(8, 保底.length), 300000) : 保底;
   const 四版序 = 选项.balance ? 轮换序列(四版, 现在, Math.min(8, 四版.length), 300000) : 四版;
@@ -3544,7 +3695,7 @@ export function 短哈希(文本) {
 }
 
 export function 压缩节点(节点) {
-  return [节点.ip, 节点.port || 443, 节点.isp || '', 节点.tier || 0, 节点.kind || 'v4', 节点.latency == null ? null : 节点.latency, 节点.speed || 0, 节点.region || ''];
+  return [节点.ip, 节点.port || 443, 节点.isp || '', 节点.tier || 0, 节点.kind || 'v4', 节点.latency == null ? null : 节点.latency, 节点.speed || 0, 节点.region || '', 节点.relay ? 1 : 0, 节点.sourced ? 1 : 0];
 }
 
 export function 展开节点(项) {
@@ -3559,7 +3710,9 @@ export function 展开节点(项) {
       kind: 项.kind || 地址种类(项.ip),
       latency: 项.latency == null ? null : 项.latency,
       speed: 项.speed || 0,
-      region: 项.region || ''
+      region: 项.region || '',
+      relay: !!项.relay,
+      sourced: !!项.sourced
     };
   }
   if (!项[0]) return null;
@@ -3571,7 +3724,9 @@ export function 展开节点(项) {
     kind: 项[4] || 'v4',
     latency: 项[5] == null ? null : 项[5],
     speed: 项[6] || 0,
-    region: 项[7] || ''
+    region: 项[7] || '',
+    relay: !!项[8],
+    sourced: !!项[9]
   };
 }
 
@@ -3669,7 +3824,7 @@ function 读取当前线路选项() {
 
 function 线路缓存键(选项, 自定义摘要) {
   return [
-    'tls2',
+    'mix3',
     选项.region,
     选项.mobile ? 1 : 0,
     选项.unicom ? 1 : 0,
@@ -3937,33 +4092,41 @@ async function 读取仓库优选节点() {
   }
 }
 
+function 标成社区节点(列表, 是中转 = false) {
+  return (列表 || []).map(节点 => {
+    if (!节点 || 节点.kind === 'domain') return 节点;
+    const 中转 = !!(是中转 && !位于云墙网段(节点.ip));
+    return { ...节点, sourced: true, relay: 中转 || !!节点.relay };
+  });
+}
+
 async function 拉取远程优选(选项) {
   const 任务 = [];
   if (启用优选地址) {
-    任务.push(拉取并解析(实测优选源[0], { tier: 1, fallbackName: '优选IP', prefer: 'isp', maxLines: 80 }).then(列表 => 列表.sort(比较优选).slice(0, 24)));
-    任务.push(拉取并解析(实测优选源[1], { tier: 1, fallbackName: '优选IP', prefer: 'isp', maxLines: 60 }).then(列表 => 列表.sort(比较优选).slice(0, 16)));
-    任务.push(拉取并解析(入口优选源, { tier: 0, fallbackName: '入口IP', prefer: 'isp', maxLines: 60 }));
+    任务.push(拉取并解析(实测优选源[0], { tier: 1, fallbackName: '优选IP', prefer: 'isp', maxLines: 80 }).then(列表 => 标成社区节点(列表.sort(比较优选).slice(0, 40))));
+    任务.push(拉取并解析(实测优选源[1], { tier: 1, fallbackName: '优选IP', prefer: 'isp', maxLines: 60 }).then(列表 => 标成社区节点(列表.sort(比较优选).slice(0, 24))));
+    任务.push(拉取并解析(优选域名源, { tier: 4, fallbackName: '优选域名', prefer: 'isp', maxLines: 80 }).then(列表 => 列表.filter(项 => 项.kind === 'domain').slice(0, 4)));
     const 地区网址 = 选项.pool.length ? 选项.pool : (选项.region === 'all' ? 内置地区代码 : [选项.region]).map(内置地区源).filter(Boolean);
     for (const 网址 of 地区网址) {
-      任务.push(拉取并解析(网址, { tier: 2, fallbackName: '优选IP', prefer: 'region', maxLines: 20 }).then(列表 => 列表.slice(0, 6)));
+      任务.push(拉取并解析(网址, { tier: 2, fallbackName: '中转', prefer: 'region', maxLines: 20 }).then(列表 => 标成社区节点(列表.slice(0, 6), true)));
     }
     if (选项.v6policy !== 'off' && 选项.ipv6) {
-      任务.push(拉取并解析(六版优选源, { tier: 3, fallbackName: 'IPv6优选', prefer: 'isp', maxLines: 30 }).then(列表 => 列表.filter(项 => 项.kind === 'v6').slice(0, 8)));
+      任务.push(拉取并解析(六版优选源, { tier: 3, fallbackName: 'IPv6优选', prefer: 'isp', maxLines: 30 }).then(列表 => 标成社区节点(列表.filter(项 => 项.kind === 'v6').slice(0, 8))));
     }
   }
-  if (启用仓库优选 && 优选地址源) 任务.push(读取仓库优选节点());
+  if (启用仓库优选 && 优选地址源) 任务.push(读取仓库优选节点().then(列表 => 标成社区节点(列表)));
   const 结算 = await Promise.allSettled(任务);
   let 节点 = [];
   for (const 项 of 结算) {
     if (项.status === 'fulfilled' && Array.isArray(项.value)) 节点 = 节点.concat(项.value);
   }
   节点 = 收成云墙(节点);
-  节点 = 保留可用速度(节点, 8);
+  节点 = 保留可用速度(节点, 4);
   const 质量 = 节点.filter(项 => 项.kind === 'v4' && 项.tier <= 2).length;
   if (启用优选地址 && 质量 < 5) {
     try {
       const 旧列表 = await 获取值地址列表();
-      节点 = 节点.concat(收成云墙((旧列表 || []).map(项 => ({
+      节点 = 节点.concat(标成社区节点(收成云墙((旧列表 || []).map(项 => ({
         ip: 项.ip,
         port: 443,
         isp: 项.isp || '优选IP',
@@ -3972,7 +4135,7 @@ async function 拉取远程优选(选项) {
         latency: null,
         speed: 0,
         region: ''
-      }))));
+      })))));
     } catch (错误) {}
   }
   return 合并去重(节点);
@@ -3985,17 +4148,19 @@ async function 刷新线路候选(键, 选项, 本地候选, 独占) {
     let 远程 = [];
     if (!独占 && (启用优选地址 || (启用仓库优选 && 优选地址源))) 远程 = await 拉取远程优选(选项);
     let 候选 = 收成云墙(本地候选.concat(远程));
-    if (启用优选域名 && !独占) 候选 = 候选.concat(await 选取优选域名(4));
-    候选 = 保留可用速度(筛选优选(合并去重(候选), 选项), 8);
+    if (启用优选域名 && !独占) 候选 = 候选.concat(await 选取优选域名(2));
+    候选 = 保留可用速度(筛选优选(合并去重(候选), 选项), 4);
+    if (选项.anchor && !独占) 候选 = 入口补位(候选, 8);
+    候选 = 扩展备用端口(候选);
     const 测活 = await 测活候选(候选, 选项);
     候选 = 测活.nodes;
-    let 四版数 = 候选.filter(项 => 项.kind === 'v4' && 项.alive).length;
-    if (启用优选地址 && !独占 && 选项.probe && 四版数 < 8) {
-      const 补测 = await 测活候选(随机补足节点(6), { ...选项, limit: 8 }, true);
+    let 四版数 = 候选.filter(项 => 项.kind === 'v4' && 项.tier !== 5).length;
+    if (启用优选地址 && !独占 && 选项.probe && 四版数 < 4) {
+      const 补测 = await 测活候选(随机补足节点(4), { ...选项, limit: 8 }, true);
       候选 = 合并去重(候选.concat((补测.nodes || []).filter(项 => 项.kind === 'v4' && 项.alive)));
-      四版数 = 候选.filter(项 => 项.kind === 'v4' && 项.alive).length;
+      四版数 = 候选.filter(项 => 项.kind === 'v4' && 项.tier !== 5).length;
     }
-    if (候选.length) await 写入线路缓存(键, 候选, 四版数 > 0, 独占);
+    if (候选.length) await 写入线路缓存(键, 候选, 测活.effective && 四版数 > 0, 独占);
     return 候选;
   })().finally(() => {
     if (线路优化刷新键 === 键) 线路优化刷新任务 = null;
@@ -4008,7 +4173,6 @@ async function 组装线路优化节点() {
   const 有自定义 = 自定义优选地址列表.length > 0 || 自定义优选域名列表.length > 0;
   const 独占 = 有自定义 && !选项.merge;
   const 本地 = [];
-  if (选项.anchor) 本地.push(...生成保底节点(实测入口地址));
   if (有自定义) 本地.push(...自定义转节点());
   const 摘要 = 短哈希(JSON.stringify({
     本地: 本地.map(节点键),
@@ -4035,6 +4199,7 @@ async function 组装线路优化节点() {
     缓存状态 = 候选.length ? 'miss' : 'empty';
     if (!候选.length) 候选 = 筛选优选(合并去重(收成云墙(本地)), 选项);
   }
+  候选 = 扩展备用端口(候选);
   候选 = 标注保底(候选);
   const 入口 = 生成入口节点(线路入口域名);
   if (入口) 候选 = 合并去重(候选.concat([入口]));
@@ -7014,6 +7179,7 @@ async function 处理订阅值(请求241, 用户240 = null) {
                                         <span>自定义节点合并默认池</span>
                                     </label>
                                 </div>
+                                <div style="color: #9ad7ff; font-size: 12px; line-height: 1.5; margin-bottom: 10px;">移动、联通、电信各自保留实测地址，并带上地区中转和 8443。Worker 握手失败的实测地址仍会下发。</div>
                                 <div style="display: flex; flex-wrap: wrap; gap: 12px;">
                                     <div style="min-width: 120px; flex: 1;">
                                         <label style="display: block; margin-bottom: 6px; color: #00f0ff;">下发数量</label>
