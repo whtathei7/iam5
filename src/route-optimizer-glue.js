@@ -15,6 +15,7 @@ const 线路优化保留毫秒 = 6 * 60 * 60 * 1000;
 let 线路优化内存 = null;
 let 线路优化刷新任务 = null;
 let 线路优化刷新键 = '';
+let 线路写入账本 = { day: '', writes: 0, lastAt: 0, hash: '' };
 
 function 应用线路优化开关() {
   const 线路 = 整理线路选项(获取有效配置快照(当前环境));
@@ -63,6 +64,15 @@ function 线路缓存键(选项, 自定义摘要) {
   ].join('|');
 }
 
+function 记住写入账本(数据, 沿用摘要) {
+  if (!数据) return;
+  const 现在 = Date.now();
+  const 日 = new Date(现在).toISOString().slice(0, 10);
+  if (线路写入账本.day !== 日) 线路写入账本 = { day: 日, writes: 0, lastAt: 0, hash: '' };
+  if (沿用摘要 && 数据.hash) 线路写入账本.hash = 数据.hash;
+  if (数据.at) 线路写入账本.lastAt = Math.max(线路写入账本.lastAt || 0, 数据.at || 0);
+}
+
 async function 读取线路缓存(键) {
   const 现在 = Date.now();
   if (线路优化内存 && 线路优化内存.key === 键) {
@@ -74,22 +84,45 @@ async function 读取线路缓存(键) {
     const 原文 = await 键值存储.get('opt_pool');
     if (!原文) return null;
     const 数据 = JSON.parse(原文);
-    if (!数据 || 数据.key !== 键 || !Array.isArray(数据.nodes)) return null;
-    线路优化内存 = { key: 键, at: 数据.at || 0, nodes: 数据.nodes };
+    const 节点 = (数据 && Array.isArray(数据.nodes) ? 数据.nodes : []).map(展开节点).filter(Boolean);
+    const 键匹配 = !!(数据 && 数据.key === 键 && 节点.length);
+    记住写入账本(数据, 键匹配);
+    if (!键匹配) return null;
+    线路优化内存 = { key: 键, at: 数据.at || 0, nodes: 节点, hash: 数据.hash || 持久化摘要(节点) };
     const 年龄 = 现在 - 线路优化内存.at;
     if (年龄 >= 线路优化保留毫秒) return null;
-    return { nodes: 数据.nodes, fresh: 年龄 < 线路优化新鲜毫秒 };
+    return { nodes: 节点, fresh: 年龄 < 线路优化新鲜毫秒 };
   } catch (错误) {
     return null;
   }
 }
 
-async function 写入线路缓存(键, 节点) {
-  线路优化内存 = { key: 键, at: Date.now(), nodes: 节点 };
-  if (!键值存储) return;
+async function 写入线路缓存(键, 节点, 探测有效, 独占) {
+  const 现在 = Date.now();
+  const 可存 = 可持久化节点(节点);
+  const 哈希 = 持久化摘要(节点);
+  线路优化内存 = {
+    key: 键,
+    at: 缓存时间戳(现在, 探测有效, 线路优化新鲜毫秒),
+    nodes: 节点,
+    hash: 哈希
+  };
+  if (!探测有效 || 独占 || !键值存储 || !可存.length) return 'skip';
+  const 决定 = 判断缓存写入(线路写入账本, 现在, 哈希);
+  线路写入账本 = 决定.账本;
+  if (!决定.ok) return 决定.reason;
   try {
-    await 键值存储.put('opt_pool', JSON.stringify(线路优化内存), { expirationTtl: 21600 });
-  } catch (错误) {}
+    await 键值存储.put('opt_pool', JSON.stringify({
+      v: 2,
+      key: 键,
+      at: 现在,
+      hash: 哈希,
+      nodes: 可存.map(压缩节点)
+    }), { expirationTtl: 21600 });
+    return 'write';
+  } catch (错误) {
+    return 'skip';
+  }
 }
 
 async function 拉取优选文本(网址) {
@@ -141,16 +174,17 @@ async function 探测套接字可达(主机, 端口, 超时毫秒) {
 }
 
 async function 测活候选(候选, 选项) {
-  if (!选项.probe) return 候选;
+  if (!选项.probe) return { nodes: 候选, effective: true };
   const 样本 = 挑选测活样本(候选, 24);
-  if (!样本.length) return 候选;
+  if (!样本.length) return { nodes: 候选, effective: true };
   const 探测键 = 样本.map(节点键);
   const 结果 = await 并发映射(样本, 4, async 节点 => {
     if (节点.kind === 'domain') return '';
     const 通 = await 探测套接字可达(节点.ip, 节点.port || 443, 1000);
     return 通 ? 节点键(节点) : '';
   });
-  return 应用测活结果(候选, 结果.filter(Boolean), 探测键, 选项);
+  const 存活 = 结果.filter(Boolean);
+  return { nodes: 应用测活结果(候选, 存活, 探测键, 选项), effective: 存活.length > 0 };
 }
 
 async function 域名仍可解析(域名) {
@@ -279,8 +313,9 @@ async function 刷新线路候选(键, 选项, 本地候选, 独占) {
     let 候选 = 本地候选.concat(远程);
     if (启用优选域名 && !独占) 候选 = 候选.concat(await 选取优选域名(4));
     候选 = 筛选优选(合并去重(候选), 选项);
-    候选 = await 测活候选(候选, 选项);
-    if (候选.length) await 写入线路缓存(键, 候选);
+    const 测活 = await 测活候选(候选, 选项);
+    候选 = 测活.nodes;
+    if (候选.length) await 写入线路缓存(键, 候选, 测活.effective, 独占);
     return 候选;
   })().finally(() => {
     if (线路优化刷新键 === 键) 线路优化刷新任务 = null;

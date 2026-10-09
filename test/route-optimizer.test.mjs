@@ -14,7 +14,12 @@ import {
   低延迟网段,
   是安全优选网址,
   生成保底节点,
-  节点键
+  节点键,
+  压缩节点,
+  展开节点,
+  可持久化节点,
+  判断缓存写入,
+  缓存时间戳
 } from '../src/route-optimizer-core.mjs';
 
 const 选项 = 整理线路选项({ optLimit: 12, ipv6: 'yes', v6policy: 'off' });
@@ -116,6 +121,28 @@ test('随机补足落在低延迟网段内，私网和明文地址不能当优�
   });
   assert.deepEqual(池.pool, ['https://bestcf.pages.dev/random-region/HK/10.txt']);
   assert.equal(是安全优选网址('https://192.168.1.1/a'), false);
+});
+
+test('优选缓存相同内容不写，随机地址不落盘，探测失败不会冻住三十分钟', () => {
+  const 保底 = 生成保底节点(['1.1.1.1']);
+  const 随机 = { ip: '104.16.1.1', port: 443, isp: '随机补足', tier: 5, kind: 'v4', latency: null, speed: 0, region: '' };
+  const 可存 = 可持久化节点(保底.concat([随机]));
+  assert.deepEqual(可存.map(项 => 项.ip), ['1.1.1.1']);
+  const 还原 = 展开节点(压缩节点(可存[0]));
+  assert.equal(还原.isp, '保底');
+  assert.equal(还原.tier, 0);
+  const 现在 = Date.parse('2026-10-09T00:00:00Z');
+  const 首次 = 判断缓存写入(null, 现在, 'abc');
+  assert.equal(首次.ok, true);
+  const 重复 = 判断缓存写入(首次.账本, 现在 + 1000, 'abc');
+  assert.equal(重复.reason, 'same');
+  const 过密 = 判断缓存写入(首次.账本, 现在 + 60 * 1000, 'def');
+  assert.equal(过密.reason, 'gate');
+  const 预算耗尽 = 判断缓存写入({ day: '2026-10-09', writes: 24, lastAt: 0, hash: 'old' }, 现在, 'new');
+  assert.equal(预算耗尽.reason, 'budget');
+  const 失败时间 = 缓存时间戳(现在, false, 30 * 60 * 1000);
+  assert.ok(现在 - 失败时间 < 30 * 60 * 1000);
+  assert.ok(现在 + 3 * 60 * 1000 - 失败时间 > 30 * 60 * 1000);
 });
 
 test('套用脚本可重复执行，工人脚本语法保持有效', () => {

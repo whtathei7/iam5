@@ -392,6 +392,64 @@ export function 短哈希(文本) {
   return (值 >>> 0).toString(16);
 }
 
+export function 压缩节点(节点) {
+  return [节点.ip, 节点.port || 443, 节点.isp || '', 节点.tier || 0, 节点.kind || 'v4', 节点.latency == null ? null : 节点.latency, 节点.speed || 0, 节点.region || ''];
+}
+
+export function 展开节点(项) {
+  if (!项) return null;
+  if (!Array.isArray(项)) {
+    if (!项.ip) return null;
+    return {
+      ip: 项.ip,
+      port: 项.port || 443,
+      isp: 项.isp || '',
+      tier: 项.tier || 0,
+      kind: 项.kind || 地址种类(项.ip),
+      latency: 项.latency == null ? null : 项.latency,
+      speed: 项.speed || 0,
+      region: 项.region || ''
+    };
+  }
+  if (!项[0]) return null;
+  return {
+    ip: 项[0],
+    port: 项[1] || 443,
+    isp: 项[2] || '',
+    tier: 项[3] || 0,
+    kind: 项[4] || 'v4',
+    latency: 项[5] == null ? null : 项[5],
+    speed: 项[6] || 0,
+    region: 项[7] || ''
+  };
+}
+
+export function 可持久化节点(列表) {
+  return (列表 || []).filter(节点 => 节点 && 节点.ip && 节点.tier !== 5 && 节点.kind !== 'domain').slice(0, 80);
+}
+
+export function 持久化摘要(列表) {
+  return 短哈希(可持久化节点(列表).map(节点 => `${节点.tier}|${节点键(节点)}`).join(','));
+}
+
+export function 缓存时间戳(现在, 探测有效, 新鲜毫秒) {
+  if (探测有效) return 现在;
+  return 现在 - 新鲜毫秒 + 2 * 60 * 1000;
+}
+
+export function 判断缓存写入(账本, 现在, 哈希) {
+  const 日 = new Date(现在).toISOString().slice(0, 10);
+  const 当前 = 账本 && 账本.day === 日 ? { ...账本 } : { day: 日, writes: 0, lastAt: 0, hash: '' };
+  if (!哈希 || 当前.hash === 哈希) return { ok: false, reason: 'same', 账本: 当前 };
+  if (当前.lastAt && 现在 - 当前.lastAt < 10 * 60 * 1000) return { ok: false, reason: 'gate', 账本: 当前 };
+  if (当前.writes >= 24) return { ok: false, reason: 'budget', 账本: 当前 };
+  return {
+    ok: true,
+    reason: 'write',
+    账本: { day: 日, writes: 当前.writes + 1, lastAt: 现在, hash: 哈希 }
+  };
+}
+
 export function 并发映射(列表, 并发, 任务) {
   const 结果 = new Array(列表.length);
   let 游标 = 0;
