@@ -18,6 +18,14 @@ let 线路优化刷新键 = '';
 let 线路写入账本 = { day: '', writes: 0, lastAt: 0, hash: '' };
 let 线路入口域名 = '';
 
+function 读取备用前置域名() {
+  const 原文 = 当前环境.FRONT_DOMAINS || 当前环境.frontDomains || 当前环境.OPT_FRONT_DOMAINS || '';
+  return String(原文).split(/[\s,;]+/).map(项 => 项.trim().toLowerCase()).filter(项 => {
+    if (!项 || 项 === 线路入口域名) return false;
+    return /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(项);
+  }).filter((项, 索引, 全部) => 全部.indexOf(项) === 索引).slice(0, 8);
+}
+
 function 应用线路优化开关() {
   const 线路 = 整理线路选项(获取有效配置快照(当前环境));
   启用线路优化 = 线路.enabled;
@@ -431,10 +439,14 @@ async function 组装线路优化节点() {
   候选 = 标注保底(候选);
   const 入口 = 生成入口节点(线路入口域名);
   if (入口) 候选 = 合并去重(候选.concat([入口]));
-  const 最终 = 编排优选节点(候选, 选项);
+  let 最终 = 编排优选节点(候选, 选项);
+  const 备用前置域名 = 读取备用前置域名();
+  最终 = 分配前置域名(最终, 线路入口域名, 备用前置域名);
   const 池内 = 候选.filter(项 => 项.kind !== 'domain').length;
-  const 活地址 = 最终.filter(项 => 项.kind !== 'domain').length;
-  线路优化摘要 = `on;count=${最终.length};alive=${活地址};pool=${池内};cache=${缓存状态}`;
+  const 已选地址 = 最终.filter(项 => 项.kind !== 'domain').length;
+  const 边缘已测 = 最终.filter(项 => 项.kind !== 'domain' && 项.edgeStatus).length;
+  const 边缘可达 = 最终.filter(项 => 项.kind !== 'domain' && 项.edgeStatus === 'ok').length;
+  线路优化摘要 = `on;count=${最终.length};selected=${已选地址};edge_ok=${边缘可达};edge_tested=${边缘已测};user_ok=unknown;fronts=${备用前置域名.length + 1};pool=${池内};cache=${缓存状态}`;
   return 最终;
 }
 

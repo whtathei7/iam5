@@ -29,7 +29,9 @@ let 启用木马 = false;
 let 启用扩展传输 = false;
 let 传输路径 = '';
 // 启用ECH功能（true启用，false禁用）
-let 启用加密客户端问候 = false;
+/* ROUTE_OPT_START ech-runtime-default */
+let 启用加密客户端问候 = true;
+/* ROUTE_OPT_END ech-runtime-default */
 // 自定义DNS服务器（默认：https://223.5.5.5/dns-query）
 let 自定义域名系统 = 'https://223.5.5.5/dns-query';
 // 自定义ECH域名（默认：cloudflare-ech.com）
@@ -55,7 +57,9 @@ const 配置默认值 = {
   ev: 'yes',
   et: 'no',
   ex: 'no',
-  ech: 'no',
+/* ROUTE_OPT_START ech-config-default */
+  ech: 'yes',
+/* ROUTE_OPT_END ech-config-default */
   tp: '',
   customDNS: 'https://223.5.5.5/dns-query',
   customECHDomain: 'cloudflare-ech.com',
@@ -764,7 +768,10 @@ async fetch(请求735, 本地值734, 本地值733) {
 /* ROUTE_OPT_START fetch-apply */
       启用家宽链式 = 获取配置开关值('jk', false, 本地值734.jk || 本地值734.JK);
       应用线路优化开关();
-/* ROUTE_OPT_END fetch-apply */      启用加密客户端问候 = 获取配置开关值('ech', false, 本地值734.ech || 本地值734.ECH);
+/* ROUTE_OPT_END fetch-apply *//* ROUTE_OPT_START ech-fetch-default */
+      const 强制ECH = !/^(no|false|0|off)$/i.test(String(本地值734.ECH_REQUIRED ?? 本地值734.echRequired ?? 'yes'));
+      启用加密客户端问候 = 强制ECH || 获取配置开关值('ech', true, 本地值734.ech || 本地值734.ECH);
+/* ROUTE_OPT_END ech-fetch-default */
 
       // 加载自定义DNS和ECH域名配置
       自定义域名系统 = 获取配置文本值('customDNS', 配置默认值.customDNS).trim() || 配置默认值.customDNS;
@@ -3665,11 +3672,11 @@ export function 应用握手结果(列表, 探测, 选项, 严格 = false) {
       continue;
     }
     if (结果.status === 'ok') {
-      留下.push({ ...节点, port: 结果.port || 节点.port || 443, alive: true });
+      留下.push({ ...节点, port: 结果.port || 节点.port || 443, alive: true, edgeStatus: 'ok' });
       continue;
     }
     if (节点.tier === 5) continue;
-    if (社区节点(节点)) 留下.push(节点);
+    if (社区节点(节点)) 留下.push({ ...节点, alive: false, edgeStatus: 结果.status || 'failed' });
   }
   const 节点 = 合并去重(留下);
   return { nodes: 节点, effective: 节点.some(项 => 项.kind !== 'domain' && (项.alive || 社区节点(项))) };
@@ -3936,8 +3943,26 @@ export function 短哈希(文本) {
   return (值 >>> 0).toString(16);
 }
 
+export function 生成抗阻断路径(节点, 用户 = '') {
+  const 标识 = 节点 && (节点.ip || 节点.domain || 节点.server) || '';
+  const 端口 = 节点 && 节点.port || 443;
+  const 前置域名 = 节点 && 节点.frontDomain || '';
+  return `/assets/${短哈希(`${用户}|${标识}|${端口}|${前置域名}`)}?ed=2048`;
+}
+
+export function 分配前置域名(列表, 入口域名, 备用域名 = []) {
+  const 域名 = [入口域名, ...(备用域名 || [])]
+    .map(项 => String(项 || '').trim().toLowerCase())
+    .filter((项, 索引, 全部) => 项 && 全部.indexOf(项) === 索引);
+  if (域名.length <= 1) return (列表 || []).map(节点 => ({ ...节点, frontDomain: 域名[0] || '' }));
+  return (列表 || []).map((节点, 索引) => ({
+    ...节点,
+    frontDomain: 域名[索引 % 域名.length]
+  }));
+}
+
 export function 压缩节点(节点) {
-  return [节点.ip, 节点.port || 443, 节点.isp || '', 节点.tier || 0, 节点.kind || 'v4', 节点.latency == null ? null : 节点.latency, 节点.speed || 0, 节点.region || '', 节点.relay ? 1 : 0, 节点.sourced ? 1 : 0];
+  return [节点.ip, 节点.port || 443, 节点.isp || '', 节点.tier || 0, 节点.kind || 'v4', 节点.latency == null ? null : 节点.latency, 节点.speed || 0, 节点.region || '', 节点.relay ? 1 : 0, 节点.sourced ? 1 : 0, 节点.edgeStatus || (节点.alive ? 'ok' : '')];
 }
 
 export function 展开节点(项) {
@@ -3954,7 +3979,9 @@ export function 展开节点(项) {
       speed: 项.speed || 0,
       region: 项.region || '',
       relay: !!项.relay,
-      sourced: !!项.sourced
+      sourced: !!项.sourced,
+      alive: 项.edgeStatus === 'ok' || !!项.alive,
+      edgeStatus: 项.edgeStatus || (项.alive ? 'ok' : '')
     };
   }
   if (!项[0]) return null;
@@ -3968,7 +3995,9 @@ export function 展开节点(项) {
     speed: 项[6] || 0,
     region: 项[7] || '',
     relay: !!项[8],
-    sourced: !!项[9]
+    sourced: !!项[9],
+    alive: 项[10] === 'ok',
+    edgeStatus: 项[10] || ''
   };
 }
 
@@ -4050,6 +4079,14 @@ let 线路优化刷新任务 = null;
 let 线路优化刷新键 = '';
 let 线路写入账本 = { day: '', writes: 0, lastAt: 0, hash: '' };
 let 线路入口域名 = '';
+
+function 读取备用前置域名() {
+  const 原文 = 当前环境.FRONT_DOMAINS || 当前环境.frontDomains || 当前环境.OPT_FRONT_DOMAINS || '';
+  return String(原文).split(/[\s,;]+/).map(项 => 项.trim().toLowerCase()).filter(项 => {
+    if (!项 || 项 === 线路入口域名) return false;
+    return /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(项);
+  }).filter((项, 索引, 全部) => 全部.indexOf(项) === 索引).slice(0, 8);
+}
 
 function 应用线路优化开关() {
   const 线路 = 整理线路选项(获取有效配置快照(当前环境));
@@ -4464,10 +4501,14 @@ async function 组装线路优化节点() {
   候选 = 标注保底(候选);
   const 入口 = 生成入口节点(线路入口域名);
   if (入口) 候选 = 合并去重(候选.concat([入口]));
-  const 最终 = 编排优选节点(候选, 选项);
+  let 最终 = 编排优选节点(候选, 选项);
+  const 备用前置域名 = 读取备用前置域名();
+  最终 = 分配前置域名(最终, 线路入口域名, 备用前置域名);
   const 池内 = 候选.filter(项 => 项.kind !== 'domain').length;
-  const 活地址 = 最终.filter(项 => 项.kind !== 'domain').length;
-  线路优化摘要 = `on;count=${最终.length};alive=${活地址};pool=${池内};cache=${缓存状态}`;
+  const 已选地址 = 最终.filter(项 => 项.kind !== 'domain').length;
+  const 边缘已测 = 最终.filter(项 => 项.kind !== 'domain' && 项.edgeStatus).length;
+  const 边缘可达 = 最终.filter(项 => 项.kind !== 'domain' && 项.edgeStatus === 'ok').length;
+  线路优化摘要 = `on;count=${最终.length};selected=${已选地址};edge_ok=${边缘可达};edge_tested=${边缘已测};user_ok=unknown;fronts=${备用前置域名.length + 1};pool=${池内};cache=${缓存状态}`;
   return 最终;
 }
 
@@ -4767,7 +4808,10 @@ function 生成链接列表来源源(列表482, 用户481, 工作器域名480, �
   const 协议470 = atob('dmxlc3M=');
   const 制作节点名称469 = 别名命名器477 || 创建值节点命名器(跳过编号478);
   for (const 项目468 of 列表482) {
-    const 安全地址467 = 项目468.ip.includes(':') ? `[${项目468.ip}]` : 项目468.ip;
+/* ROUTE_OPT_START vless-source-server */
+    const 服务器468 = 项目468.kind === 'domain' && 项目468.frontDomain ? 项目468.frontDomain : 项目468.ip;
+    const 安全地址467 = 服务器468.includes(':') ? `[${服务器468}]` : 服务器468;
+/* ROUTE_OPT_END vless-source-server */
     let 值值生成466 = [];
     if (项目468.port) {
       const 端口465 = 项目468.port;
@@ -4812,13 +4856,15 @@ function 生成链接列表来源源(列表482, 用户481, 工作器域名480, �
         const 网页套接字参数459 = new URLSearchParams({
           encryption: 'none',
           security: 'tls',
-          sni: 工作器域名480,
+/* ROUTE_OPT_START vless-source-front */
+          sni: 项目468.frontDomain || 工作器域名480,
           // randomized fingerprint may cause TLS compatibility issues with some Xray/uTLS clients.
           // Use chrome as default for better compatibility (chrome is also required when ECH is enabled).
           fp: 'chrome',
           type: 'ws',
-          host: 工作器域名480,
-          path: 网页套接字路径471
+          host: 项目468.frontDomain || 工作器域名480,
+          path: 生成抗阻断路径(项目468, 用户481)
+/* ROUTE_OPT_END vless-source-front */
         });
         处理值应用层协议协商值(网页套接字参数459);
 
@@ -4853,7 +4899,10 @@ async function 生成木马链接列表来源源(列表455, 用户454, 工作器
   const 密码445 = 传输路径 || 用户454;
   const 制作节点名称444 = 别名命名器450 || 创建值节点命名器(跳过编号451);
   for (const 项目443 of 列表455) {
-    const 安全地址442 = 项目443.ip.includes(':') ? `[${项目443.ip}]` : 项目443.ip;
+/* ROUTE_OPT_START trojan-source-server */
+    const 服务器443 = 项目443.kind === 'domain' && 项目443.frontDomain ? 项目443.frontDomain : 项目443.ip;
+    const 安全地址442 = 服务器443.includes(':') ? `[${服务器443}]` : 服务器443;
+/* ROUTE_OPT_END trojan-source-server */
     let 值值生成 = [];
     if (项目443.port) {
       const 端口441 = 项目443.port;
@@ -4897,11 +4946,13 @@ async function 生成木马链接列表来源源(列表455, 用户454, 工作器
       if (传输层安全) {
         const 网页套接字参数436 = new URLSearchParams({
           security: 'tls',
-          sni: 工作器域名453,
+/* ROUTE_OPT_START trojan-source-front */
+          sni: 项目443.frontDomain || 工作器域名453,
           fp: 'chrome',
           type: 'ws',
-          host: 工作器域名453,
-          path: 网页套接字路径446
+          host: 项目443.frontDomain || 工作器域名453,
+          path: 生成抗阻断路径(项目443, 用户454)
+/* ROUTE_OPT_END trojan-source-front */
         });
         处理值应用层协议协商值(网页套接字参数436);
 
@@ -10723,10 +10774,17 @@ function 生成链接列表来源新地址列表(列表100, 用户99, 工作器�
   const 制作节点名称90 = 别名命名器95 || 创建值节点命名器(跳过编号96);
   for (const 项目89 of 列表100) {
     const 端口88 = 项目89.port;
-    const 安全地址87 = 项目89.ip.includes(':') ? `[${项目89.ip}]` : 项目89.ip;
+/* ROUTE_OPT_START vless-new-server */
+    const 服务器89 = 项目89.kind === 'domain' && 项目89.frontDomain ? 项目89.frontDomain : 项目89.ip;
+    const 安全地址87 = 服务器89.includes(':') ? `[${服务器89}]` : 服务器89;
+    const 节点前置域名89 = 项目89.frontDomain || 工作器域名98;
+    const 节点网页套接字路径89 = 生成抗阻断路径(项目89, 用户99);
+/* ROUTE_OPT_END vless-new-server */
     if (云墙安全超文本端口93.includes(端口88)) {
       const 网页套接字节点名称86 = 制作节点名称90(项目89);
-      let 链接85 = `${协议}://${用户99}@${安全地址87}:${端口88}?encryption=none&security=tls&sni=${工作器域名98}&fp=chrome&type=ws&host=${工作器域名98}&path=${网页套接字路径91}`;
+/* ROUTE_OPT_START vless-new-front-safe-port */
+      let 链接85 = `${协议}://${用户99}@${安全地址87}:${端口88}?encryption=none&security=tls&sni=${节点前置域名89}&fp=chrome&type=ws&host=${节点前置域名89}&path=${节点网页套接字路径89}`;
+/* ROUTE_OPT_END vless-new-front-safe-port */
       if (自定义应用层协议协商) 链接85 += `&alpn=${encodeURIComponent(自定义应用层协议协商)}`;
 
       // 如果启用了ECH，添加ech参数（ECH需要伪装成Chrome浏览器）
@@ -10745,7 +10803,9 @@ function 生成链接列表来源新地址列表(列表100, 用户99, 工作器�
       }
     } else {
       const 网页套接字节点名称80 = 制作节点名称90(项目89);
-      let 链接79 = `${协议}://${用户99}@${安全地址87}:${端口88}?encryption=none&security=tls&sni=${工作器域名98}&fp=chrome&type=ws&host=${工作器域名98}&path=${网页套接字路径91}`;
+/* ROUTE_OPT_START vless-new-front-other-port */
+      let 链接79 = `${协议}://${用户99}@${安全地址87}:${端口88}?encryption=none&security=tls&sni=${节点前置域名89}&fp=chrome&type=ws&host=${节点前置域名89}&path=${节点网页套接字路径89}`;
+/* ROUTE_OPT_END vless-new-front-other-port */
       if (自定义应用层协议协商) 链接79 += `&alpn=${encodeURIComponent(自定义应用层协议协商)}`;
 
       // 如果启用了ECH，添加ech参数（ECH需要伪装成Chrome浏览器）
@@ -10805,10 +10865,17 @@ async function 生成木马链接列表来源新地址列表(列表, 用户, 工
   const 制作节点名称 = 别名命名器 || 创建值节点命名器(跳过编号);
   for (const 项目62 of 列表) {
     const 端口61 = 项目62.port;
-    const 安全地址 = 项目62.ip.includes(':') ? `[${项目62.ip}]` : 项目62.ip;
+/* ROUTE_OPT_START trojan-new-server */
+    const 服务器62 = 项目62.kind === 'domain' && 项目62.frontDomain ? 项目62.frontDomain : 项目62.ip;
+    const 安全地址 = 服务器62.includes(':') ? `[${服务器62}]` : 服务器62;
+    const 节点前置域名62 = 项目62.frontDomain || 工作器域名;
+    const 节点网页套接字路径62 = 生成抗阻断路径(项目62, 用户);
+/* ROUTE_OPT_END trojan-new-server */
     if (云墙安全超文本端口.includes(端口61)) {
       const 网页套接字节点名称60 = 制作节点名称(项目62);
-      let 链接59 = `${atob('dHJvamFuOi8v')}${密码}@${安全地址}:${端口61}?security=tls&sni=${工作器域名}&fp=chrome&type=ws&host=${工作器域名}&path=${网页套接字路径}`;
+/* ROUTE_OPT_START trojan-new-front-safe-port */
+      let 链接59 = `${atob('dHJvamFuOi8v')}${密码}@${安全地址}:${端口61}?security=tls&sni=${节点前置域名62}&fp=chrome&type=ws&host=${节点前置域名62}&path=${节点网页套接字路径62}`;
+/* ROUTE_OPT_END trojan-new-front-safe-port */
       if (自定义应用层协议协商) 链接59 += `&alpn=${encodeURIComponent(自定义应用层协议协商)}`;
 
       // 如果启用了ECH，添加ech参数（ECH需要伪装成Chrome浏览器）
@@ -10827,7 +10894,9 @@ async function 生成木马链接列表来源新地址列表(列表, 用户, 工
       }
     } else {
       const 网页套接字节点名称 = 制作节点名称(项目62);
-      let 链接 = `${atob('dHJvamFuOi8v')}${密码}@${安全地址}:${端口61}?security=tls&sni=${工作器域名}&fp=chrome&type=ws&host=${工作器域名}&path=${网页套接字路径}`;
+/* ROUTE_OPT_START trojan-new-front-other-port */
+      let 链接 = `${atob('dHJvamFuOi8v')}${密码}@${安全地址}:${端口61}?security=tls&sni=${节点前置域名62}&fp=chrome&type=ws&host=${节点前置域名62}&path=${节点网页套接字路径62}`;
+/* ROUTE_OPT_END trojan-new-front-other-port */
       if (自定义应用层协议协商) 链接 += `&alpn=${encodeURIComponent(自定义应用层协议协商)}`;
 
       // 如果启用了ECH，添加ech参数（ECH需要伪装成Chrome浏览器）
