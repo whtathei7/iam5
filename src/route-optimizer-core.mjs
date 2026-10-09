@@ -410,11 +410,69 @@ export function 解析优选文本(文本, 配置 = {}) {
 }
 
 export function 比较优选(甲, 乙) {
-  if ((甲.tier || 0) !== (乙.tier || 0)) return (甲.tier || 0) - (乙.tier || 0);
+  const 甲失败串 = Math.max(0, Number(甲.failureStreak) || 0);
+  const 乙失败串 = Math.max(0, Number(乙.failureStreak) || 0);
+  const 甲等级 = (甲.tier || 0) + (甲失败串 >= 3 ? 2 : 甲失败串 ? 1 : 0);
+  const 乙等级 = (乙.tier || 0) + (乙失败串 >= 3 ? 2 : 乙失败串 ? 1 : 0);
+  if (甲等级 !== 乙等级) return 甲等级 - 乙等级;
+  const 甲样本 = (Number(甲.successes) || 0) + (Number(甲.failures) || 0);
+  const 乙样本 = (Number(乙.successes) || 0) + (Number(乙.failures) || 0);
+  if (甲样本 >= 2 || 乙样本 >= 2) {
+    const 甲率 = 历史成功率(甲);
+    const 乙率 = 历史成功率(乙);
+    if (甲率 !== 乙率) return 乙率 - 甲率;
+  }
   const 甲延迟 = 甲.latency == null ? 1e9 : 甲.latency;
   const 乙延迟 = 乙.latency == null ? 1e9 : 乙.latency;
   if (甲延迟 !== 乙延迟) return 甲延迟 - 乙延迟;
   return (乙.speed || 0) - (甲.speed || 0);
+}
+
+export function 历史成功率(节点) {
+  const 成功 = Math.max(0, Number(节点 && 节点.successes) || 0);
+  const 失败 = Math.max(0, Number(节点 && 节点.failures) || 0);
+  // Beta(1,1) 平滑，避免只有一次成功的新节点立刻压过长期稳定节点。
+  return (成功 + 1) / (成功 + 失败 + 2);
+}
+
+export function 更新测活历史(列表, 旧列表 = [], 现在 = Date.now()) {
+  const 历史 = new Map((旧列表 || []).filter(Boolean).map(节点 => [节点键(节点), 节点]));
+  return (列表 || []).map(节点 => {
+    if (!节点) return 节点;
+    const 旧 = 历史.get(节点键(节点)) || {};
+    let successes = Math.max(0, Number(旧.successes) || 0);
+    let failures = Math.max(0, Number(旧.failures) || 0);
+    let failureStreak = Math.max(0, Number(旧.failureStreak) || 0);
+    let lastSuccessAt = Math.max(0, Number(旧.lastSuccessAt) || 0);
+    let lastFailureAt = Math.max(0, Number(旧.lastFailureAt) || 0);
+    if (节点.edgeStatus === 'ok') {
+      successes = Math.min(255, successes + 1);
+      failureStreak = 0;
+      lastSuccessAt = 现在;
+    } else if (节点.edgeStatus === 'dead' || 节点.edgeStatus === 'timeout') {
+      failures = Math.min(255, failures + 1);
+      failureStreak = Math.min(15, failureStreak + 1);
+      lastFailureAt = 现在;
+    }
+    return { ...节点, successes, failures, failureStreak, lastSuccessAt, lastFailureAt };
+  });
+}
+
+export function 挑选电信大带宽节点(列表, 数量 = 6) {
+  const 上限 = Math.max(1, Math.min(12, Number(数量) || 6));
+  const 电信 = (列表 || []).filter(节点 => 节点 && 运营商名(节点) === '电信' && 节点.kind !== 'domain');
+  const 可用 = 电信.filter(节点 => (Number(节点.failureStreak) || 0) < 3);
+  const 有速度 = 可用.filter(节点 => Number(节点.speed) > 0);
+  const 候选 = (有速度.length ? 有速度 : 可用.length ? 可用 : 电信).slice();
+  候选.sort((甲, 乙) => {
+    const 率差 = 历史成功率(乙) - 历史成功率(甲);
+    const 甲样本 = (Number(甲.successes) || 0) + (Number(甲.failures) || 0);
+    const 乙样本 = (Number(乙.successes) || 0) + (Number(乙.failures) || 0);
+    if ((甲样本 >= 2 || 乙样本 >= 2) && 率差) return 率差;
+    if ((乙.speed || 0) !== (甲.speed || 0)) return (乙.speed || 0) - (甲.speed || 0);
+    return 比较优选(甲, 乙);
+  });
+  return 候选.slice(0, 上限);
 }
 
 export function 整理电信优选节点(列表, 配置 = {}) {
@@ -890,7 +948,13 @@ export function 分配前置域名(列表, 入口域名, 备用域名 = []) {
 }
 
 export function 压缩节点(节点) {
-  return [节点.ip, 节点.port || 443, 节点.isp || '', 节点.tier || 0, 节点.kind || 'v4', 节点.latency == null ? null : 节点.latency, 节点.speed || 0, 节点.region || '', 节点.relay ? 1 : 0, 节点.sourced ? 1 : 0, 节点.edgeStatus || (节点.alive ? 'ok' : '')];
+  return [
+    节点.ip, 节点.port || 443, 节点.isp || '', 节点.tier || 0, 节点.kind || 'v4',
+    节点.latency == null ? null : 节点.latency, 节点.speed || 0, 节点.region || '',
+    节点.relay ? 1 : 0, 节点.sourced ? 1 : 0, 节点.edgeStatus || (节点.alive ? 'ok' : ''),
+    Number(节点.successes) || 0, Number(节点.failures) || 0, Number(节点.failureStreak) || 0,
+    Number(节点.lastSuccessAt) || 0, Number(节点.lastFailureAt) || 0
+  ];
 }
 
 export function 展开节点(项) {
@@ -909,7 +973,12 @@ export function 展开节点(项) {
       relay: !!项.relay,
       sourced: !!项.sourced,
       alive: 项.edgeStatus === 'ok' || !!项.alive,
-      edgeStatus: 项.edgeStatus || (项.alive ? 'ok' : '')
+      edgeStatus: 项.edgeStatus || (项.alive ? 'ok' : ''),
+      successes: Number(项.successes) || 0,
+      failures: Number(项.failures) || 0,
+      failureStreak: Number(项.failureStreak) || 0,
+      lastSuccessAt: Number(项.lastSuccessAt) || 0,
+      lastFailureAt: Number(项.lastFailureAt) || 0
     };
   }
   if (!项[0]) return null;
@@ -925,7 +994,12 @@ export function 展开节点(项) {
     relay: !!项[8],
     sourced: !!项[9],
     alive: 项[10] === 'ok',
-    edgeStatus: 项[10] || ''
+    edgeStatus: 项[10] || '',
+    successes: Number(项[11]) || 0,
+    failures: Number(项[12]) || 0,
+    failureStreak: Number(项[13]) || 0,
+    lastSuccessAt: Number(项[14]) || 0,
+    lastFailureAt: Number(项[15]) || 0
   };
 }
 
@@ -934,7 +1008,13 @@ export function 可持久化节点(列表) {
 }
 
 export function 持久化摘要(列表) {
-  return 短哈希(可持久化节点(列表).map(节点 => `${节点.tier}|${节点键(节点)}`).join(','));
+  return 短哈希(可持久化节点(列表).map(节点 => [
+    节点.tier,
+    节点键(节点),
+    Number(节点.successes) || 0,
+    Number(节点.failures) || 0,
+    Number(节点.failureStreak) || 0
+  ].join('|')).join(','));
 }
 
 export function 缓存时间戳(现在, 探测有效, 新鲜毫秒) {

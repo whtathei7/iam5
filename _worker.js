@@ -2247,20 +2247,37 @@ function 生成值值589(链接列表588, 本地值587 = {}) {
   for (const 数量值579 of 节点列表586) 值值580.push(构建值节点行(数量值579));
   const 节点仅 = 名称列表584.length ? 名称列表584.map(数量值578 => `      - ${处理本地值622(数量值578)}`).join('\n') : '      - DIRECT';
 /* ROUTE_OPT_START clash-auto-fastest */
-  const 自动测速组名 = '♻️ 自动选择';
-  const 自动测速节点 = 挑选自动测速节点(节点列表586, 12);
-  const 自动测速仅 = 自动测速节点.length ? 自动测速节点.map(节点 => `      - ${处理本地值622(节点.name)}`).join('\n') : '      - DIRECT';
-  const 自动测速组 = [
-    '  - name: "' + 自动测速组名 + '"',
+  const 低延迟组名 = '⚡ 电信低延迟';
+  const 大带宽组名 = '🚄 电信大带宽';
+  const 电信节点 = 节点列表586.filter(节点 => /电信/.test(节点.name || ''));
+  const 低延迟节点 = 挑选自动测速节点(电信节点.length ? 电信节点 : 节点列表586, 8);
+  const 高速节点 = 节点列表586.filter(节点 => /高速\d+·.*电信/.test(节点.name || '')).sort((甲, 乙) => {
+    const 甲序 = Number((甲.name.match(/高速(\d+)·/) || [])[1]) || 999;
+    const 乙序 = Number((乙.name.match(/高速(\d+)·/) || [])[1]) || 999;
+    return 甲序 - 乙序;
+  });
+  const 大带宽节点 = 挑选自动测速节点(高速节点.length ? 高速节点 : 低延迟节点, 6);
+  const 列出测速节点 = 列表 => 列表.length ? 列表.map(节点 => `      - ${处理本地值622(节点.name)}`).join('\n') : '      - DIRECT';
+  const 低延迟组 = [
+    '  - name: "' + 低延迟组名 + '"',
     '    type: url-test',
     '    url: http://www.gstatic.com/generate_204',
     '    interval: 600',
     '    tolerance: 50',
     '    lazy: true',
     '    proxies:',
-    自动测速仅
+    列出测速节点(低延迟节点)
   ].join('\n');
-  const 值值577 = [解码64('cHJveHktZ3JvdXBzOg=='), 自动测速组, '  - name: "🚀 节点选择"', '    type: select', '    proxies:', '      - "' + 自动测速组名 + '"', '      - "🎯 全球直连"', 节点仅,
+  const 大带宽组 = [
+    '  - name: "' + 大带宽组名 + '"',
+    '    type: fallback',
+    '    url: http://www.gstatic.com/generate_204',
+    '    interval: 1800',
+    '    lazy: true',
+    '    proxies:',
+    列出测速节点(大带宽节点)
+  ].join('\n');
+  const 值值577 = [解码64('cHJveHktZ3JvdXBzOg=='), 大带宽组, 低延迟组, '  - name: "🚀 节点选择"', '    type: select', '    proxies:', '      - "' + 大带宽组名 + '"', '      - "' + 低延迟组名 + '"', '      - "🎯 全球直连"', 节点仅,
 /* ROUTE_OPT_END clash-auto-fastest */ '  - name: "🌍 国外媒体"', '    type: select', '    proxies:', 处理值选择值(名称列表584), '  - name: "📺 哔哩哔哩"', '    type: select', '    proxies:', 处理值选择值(名称列表584, {
     directFirst: true
   }), '  - name: "📹 油管视频"', '    type: select', '    proxies:', 处理值选择值(名称列表584, {
@@ -3600,11 +3617,69 @@ export function 解析优选文本(文本, 配置 = {}) {
 }
 
 export function 比较优选(甲, 乙) {
-  if ((甲.tier || 0) !== (乙.tier || 0)) return (甲.tier || 0) - (乙.tier || 0);
+  const 甲失败串 = Math.max(0, Number(甲.failureStreak) || 0);
+  const 乙失败串 = Math.max(0, Number(乙.failureStreak) || 0);
+  const 甲等级 = (甲.tier || 0) + (甲失败串 >= 3 ? 2 : 甲失败串 ? 1 : 0);
+  const 乙等级 = (乙.tier || 0) + (乙失败串 >= 3 ? 2 : 乙失败串 ? 1 : 0);
+  if (甲等级 !== 乙等级) return 甲等级 - 乙等级;
+  const 甲样本 = (Number(甲.successes) || 0) + (Number(甲.failures) || 0);
+  const 乙样本 = (Number(乙.successes) || 0) + (Number(乙.failures) || 0);
+  if (甲样本 >= 2 || 乙样本 >= 2) {
+    const 甲率 = 历史成功率(甲);
+    const 乙率 = 历史成功率(乙);
+    if (甲率 !== 乙率) return 乙率 - 甲率;
+  }
   const 甲延迟 = 甲.latency == null ? 1e9 : 甲.latency;
   const 乙延迟 = 乙.latency == null ? 1e9 : 乙.latency;
   if (甲延迟 !== 乙延迟) return 甲延迟 - 乙延迟;
   return (乙.speed || 0) - (甲.speed || 0);
+}
+
+export function 历史成功率(节点) {
+  const 成功 = Math.max(0, Number(节点 && 节点.successes) || 0);
+  const 失败 = Math.max(0, Number(节点 && 节点.failures) || 0);
+  // Beta(1,1) 平滑，避免只有一次成功的新节点立刻压过长期稳定节点。
+  return (成功 + 1) / (成功 + 失败 + 2);
+}
+
+export function 更新测活历史(列表, 旧列表 = [], 现在 = Date.now()) {
+  const 历史 = new Map((旧列表 || []).filter(Boolean).map(节点 => [节点键(节点), 节点]));
+  return (列表 || []).map(节点 => {
+    if (!节点) return 节点;
+    const 旧 = 历史.get(节点键(节点)) || {};
+    let successes = Math.max(0, Number(旧.successes) || 0);
+    let failures = Math.max(0, Number(旧.failures) || 0);
+    let failureStreak = Math.max(0, Number(旧.failureStreak) || 0);
+    let lastSuccessAt = Math.max(0, Number(旧.lastSuccessAt) || 0);
+    let lastFailureAt = Math.max(0, Number(旧.lastFailureAt) || 0);
+    if (节点.edgeStatus === 'ok') {
+      successes = Math.min(255, successes + 1);
+      failureStreak = 0;
+      lastSuccessAt = 现在;
+    } else if (节点.edgeStatus === 'dead' || 节点.edgeStatus === 'timeout') {
+      failures = Math.min(255, failures + 1);
+      failureStreak = Math.min(15, failureStreak + 1);
+      lastFailureAt = 现在;
+    }
+    return { ...节点, successes, failures, failureStreak, lastSuccessAt, lastFailureAt };
+  });
+}
+
+export function 挑选电信大带宽节点(列表, 数量 = 6) {
+  const 上限 = Math.max(1, Math.min(12, Number(数量) || 6));
+  const 电信 = (列表 || []).filter(节点 => 节点 && 运营商名(节点) === '电信' && 节点.kind !== 'domain');
+  const 可用 = 电信.filter(节点 => (Number(节点.failureStreak) || 0) < 3);
+  const 有速度 = 可用.filter(节点 => Number(节点.speed) > 0);
+  const 候选 = (有速度.length ? 有速度 : 可用.length ? 可用 : 电信).slice();
+  候选.sort((甲, 乙) => {
+    const 率差 = 历史成功率(乙) - 历史成功率(甲);
+    const 甲样本 = (Number(甲.successes) || 0) + (Number(甲.failures) || 0);
+    const 乙样本 = (Number(乙.successes) || 0) + (Number(乙.failures) || 0);
+    if ((甲样本 >= 2 || 乙样本 >= 2) && 率差) return 率差;
+    if ((乙.speed || 0) !== (甲.speed || 0)) return (乙.speed || 0) - (甲.speed || 0);
+    return 比较优选(甲, 乙);
+  });
+  return 候选.slice(0, 上限);
 }
 
 export function 整理电信优选节点(列表, 配置 = {}) {
@@ -4080,7 +4155,13 @@ export function 分配前置域名(列表, 入口域名, 备用域名 = []) {
 }
 
 export function 压缩节点(节点) {
-  return [节点.ip, 节点.port || 443, 节点.isp || '', 节点.tier || 0, 节点.kind || 'v4', 节点.latency == null ? null : 节点.latency, 节点.speed || 0, 节点.region || '', 节点.relay ? 1 : 0, 节点.sourced ? 1 : 0, 节点.edgeStatus || (节点.alive ? 'ok' : '')];
+  return [
+    节点.ip, 节点.port || 443, 节点.isp || '', 节点.tier || 0, 节点.kind || 'v4',
+    节点.latency == null ? null : 节点.latency, 节点.speed || 0, 节点.region || '',
+    节点.relay ? 1 : 0, 节点.sourced ? 1 : 0, 节点.edgeStatus || (节点.alive ? 'ok' : ''),
+    Number(节点.successes) || 0, Number(节点.failures) || 0, Number(节点.failureStreak) || 0,
+    Number(节点.lastSuccessAt) || 0, Number(节点.lastFailureAt) || 0
+  ];
 }
 
 export function 展开节点(项) {
@@ -4099,7 +4180,12 @@ export function 展开节点(项) {
       relay: !!项.relay,
       sourced: !!项.sourced,
       alive: 项.edgeStatus === 'ok' || !!项.alive,
-      edgeStatus: 项.edgeStatus || (项.alive ? 'ok' : '')
+      edgeStatus: 项.edgeStatus || (项.alive ? 'ok' : ''),
+      successes: Number(项.successes) || 0,
+      failures: Number(项.failures) || 0,
+      failureStreak: Number(项.failureStreak) || 0,
+      lastSuccessAt: Number(项.lastSuccessAt) || 0,
+      lastFailureAt: Number(项.lastFailureAt) || 0
     };
   }
   if (!项[0]) return null;
@@ -4115,7 +4201,12 @@ export function 展开节点(项) {
     relay: !!项[8],
     sourced: !!项[9],
     alive: 项[10] === 'ok',
-    edgeStatus: 项[10] || ''
+    edgeStatus: 项[10] || '',
+    successes: Number(项[11]) || 0,
+    failures: Number(项[12]) || 0,
+    failureStreak: Number(项[13]) || 0,
+    lastSuccessAt: Number(项[14]) || 0,
+    lastFailureAt: Number(项[15]) || 0
   };
 }
 
@@ -4124,7 +4215,13 @@ export function 可持久化节点(列表) {
 }
 
 export function 持久化摘要(列表) {
-  return 短哈希(可持久化节点(列表).map(节点 => `${节点.tier}|${节点键(节点)}`).join(','));
+  return 短哈希(可持久化节点(列表).map(节点 => [
+    节点.tier,
+    节点键(节点),
+    Number(节点.successes) || 0,
+    Number(节点.failures) || 0,
+    Number(节点.failureStreak) || 0
+  ].join('|')).join(','));
 }
 
 export function 缓存时间戳(现在, 探测有效, 新鲜毫秒) {
@@ -4311,6 +4408,10 @@ function 记住写入账本(数据, 沿用摘要) {
   const 现在 = Date.now();
   const 日 = new Date(现在).toISOString().slice(0, 10);
   if (线路写入账本.day !== 日) 线路写入账本 = { day: 日, writes: 0, lastAt: 0, hash: '' };
+  if (数据.ledger && 数据.ledger.day === 日) {
+    线路写入账本.writes = Math.max(线路写入账本.writes || 0, Number(数据.ledger.writes) || 0);
+    线路写入账本.lastAt = Math.max(线路写入账本.lastAt || 0, Number(数据.ledger.lastAt) || 0);
+  }
   if (沿用摘要 && 数据.hash) 线路写入账本.hash = 数据.hash;
   if (数据.at) 线路写入账本.lastAt = Math.max(线路写入账本.lastAt || 0, 数据.at || 0);
 }
@@ -4359,6 +4460,7 @@ async function 写入线路缓存(键, 节点, 探测有效, 独占) {
       key: 键,
       at: 现在,
       hash: 哈希,
+      ledger: 线路写入账本,
       nodes: 可存.map(压缩节点)
     }), { expirationTtl: 21600 });
     return 'write';
@@ -4638,7 +4740,7 @@ async function 拉取远程优选(选项) {
   return 合并去重(节点);
 }
 
-async function 刷新线路候选(键, 选项, 本地候选, 独占) {
+async function 刷新线路候选(键, 选项, 本地候选, 独占, 历史节点 = []) {
   if (线路优化刷新任务 && 线路优化刷新键 === 键) return 线路优化刷新任务;
   线路优化刷新键 = 键;
   线路优化刷新任务 = (async () => {
@@ -4650,7 +4752,7 @@ async function 刷新线路候选(键, 选项, 本地候选, 独占) {
     if (选项.anchor && !独占) 候选 = 入口补位(候选, 8);
     候选 = 扩展备用端口(候选);
     const 测活 = await 测活候选(候选, 选项);
-    候选 = 测活.nodes;
+    候选 = 更新测活历史(测活.nodes, 历史节点);
     let 四版数 = 候选.filter(项 => 项.kind === 'v4' && 项.tier !== 5).length;
     if (启用优选地址 && !独占 && 选项.probe && 四版数 < 4) {
       const 补测 = await 测活候选(随机补足节点(4), { ...选项, limit: 8 }, true);
@@ -4689,10 +4791,10 @@ async function 组装线路优化节点() {
   } else if (缓存 && 缓存.nodes.length) {
     候选 = 缓存.nodes;
     缓存状态 = 'stale';
-    const 刷新 = 刷新线路候选(键, 选项, 本地, 独占).catch(() => []);
+    const 刷新 = 刷新线路候选(键, 选项, 本地, 独占, 缓存.nodes).catch(() => []);
     if (执行上下文 && typeof 执行上下文.waitUntil === 'function') 执行上下文.waitUntil(刷新);
   } else {
-    候选 = await 刷新线路候选(键, 选项, 本地, 独占);
+    候选 = await 刷新线路候选(键, 选项, 本地, 独占, []);
     缓存状态 = 候选.length ? 'miss' : 'empty';
     if (!候选.length) 候选 = 筛选优选(合并去重(收成云墙(本地)), 选项);
   }
@@ -4701,13 +4803,19 @@ async function 组装线路优化节点() {
   const 入口 = 生成入口节点(线路入口域名);
   if (入口) 候选 = 合并去重(候选.concat([入口]));
   let 最终 = 编排优选节点(候选, 选项);
+  const 高速排名 = new Map(挑选电信大带宽节点(最终, 6).map((节点, 索引) => [节点键(节点), 索引 + 1]));
+  最终 = 最终.map(节点 => 高速排名.has(节点键(节点)) && !/^高速\d+·/.test(String(节点.isp || ''))
+    ? { ...节点, isp: `高速${String(高速排名.get(节点键(节点))).padStart(2, '0')}·${节点.isp || '电信'}`, bandwidth: true }
+    : 节点);
   const 备用前置域名 = 读取备用前置域名();
   最终 = 分配前置域名(最终, 线路入口域名, 备用前置域名);
   const 池内 = 候选.filter(项 => 项.kind !== 'domain').length;
   const 已选地址 = 最终.filter(项 => 项.kind !== 'domain').length;
   const 边缘已测 = 最终.filter(项 => 项.kind !== 'domain' && 项.edgeStatus).length;
   const 边缘可达 = 最终.filter(项 => 项.kind !== 'domain' && 项.edgeStatus === 'ok').length;
-  线路优化摘要 = `on;count=${最终.length};selected=${已选地址};edge_ok=${边缘可达};edge_tested=${边缘已测};user_ok=unknown;fronts=${备用前置域名.length + 1};pool=${池内};cache=${缓存状态}`;
+  const 历史样本 = 最终.filter(项 => (Number(项.successes) || 0) + (Number(项.failures) || 0) > 0).length;
+  const 稳定节点 = 最终.filter(项 => Number(项.successes) >= 2 && 历史成功率(项) >= 0.75 && !(Number(项.failureStreak) > 0)).length;
+  线路优化摘要 = `on;count=${最终.length};selected=${已选地址};edge_ok=${边缘可达};edge_tested=${边缘已测};history=${历史样本};stable=${稳定节点};user_ok=unknown;fronts=${备用前置域名.length + 1};pool=${池内};cache=${缓存状态}`;
   return 最终;
 }
 
