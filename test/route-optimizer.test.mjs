@@ -35,6 +35,8 @@ import {
   分配前置域名,
   是公网地址,
   社区节点,
+  电信优选源,
+  整理电信优选节点,
   允许访问,
   重置访问账本
 } from '../src/route-optimizer-core.mjs';
@@ -57,6 +59,35 @@ test('解析地区行、延迟行和 IPv6，并丢掉网段与网页', () => {
   assert.equal(节点[1].latency, 44.4);
   assert.equal(节点[1].speed, 68.59);
   assert.equal(节点[2].kind, 'v6');
+});
+
+test('BestCF 电信源只收电信标签，并允许专线中转公网地址', () => {
+  assert.deepEqual(电信优选源.map(来源 => 来源.url), [
+    'https://bestcf.pages.dev/wetest/ipv4.txt',
+    'https://cf.junzhen.qzz.io/best_ips_bj.txt',
+    'https://raw.githubusercontent.com/love-ztm/cfip/refs/heads/main/best_ips.txt'
+  ]);
+  const 三网 = 解析优选文本([
+    '104.19.63.96:443#微测优选 | 电信 | LAX | 104.19.63.96',
+    '104.17.120.1:443#微测优选 | 移动 | HKG | 104.17.120.1',
+    '104.18.20.1:443#微测优选 | 联通 | NRT | 104.18.20.1'
+  ].join('\n'), { tier: 1, prefer: 'isp' });
+  const 电信 = 整理电信优选节点(三网, { taggedOnly: true, limit: 12 });
+  assert.deepEqual(电信.map(节点 => 节点.ip), ['104.19.63.96']);
+  assert.equal(电信[0].isp, '电信');
+  assert.equal(电信[0].sourced, true);
+  assert.equal(电信[0].relay, false);
+
+  const 专线 = 解析优选文本([
+    '43.168.16.112:443#HK [优选高速 47.45ms]',
+    '202.144.194.170:8443#JP [优选高速 96.75ms]'
+  ].join('\n'), { tier: 2, prefer: 'region' });
+  const 中转 = 整理电信优选节点(专线, { relay: true, limit: 8 });
+  assert.equal(中转.length, 2);
+  assert.equal(中转[0].isp, '电信中转·香港');
+  assert.equal(中转[0].relay, true);
+  assert.equal(可拨号节点(中转[0]), true);
+  assert.equal(中转[1].port, 8443);
 });
 
 test('保底在前，低延迟优先，IPv6 默认不占名额，数量封顶', () => {

@@ -388,6 +388,16 @@ async function 拉取远程优选(选项) {
   if (启用优选地址) {
     任务.push(拉取并解析(实测优选源[0], { tier: 1, fallbackName: '优选IP', prefer: 'isp', maxLines: 80 }).then(列表 => 标成社区节点(列表.sort(比较优选).slice(0, 40))));
     任务.push(拉取并解析(实测优选源[1], { tier: 1, fallbackName: '优选IP', prefer: 'isp', maxLines: 60 }).then(列表 => 标成社区节点(列表.sort(比较优选).slice(0, 24))));
+    if (选项.telecom) {
+      for (const 来源 of 电信优选源) {
+        任务.push(拉取并解析(来源.url, {
+          tier: 来源.relay ? 2 : 1,
+          fallbackName: 来源.relay ? '电信中转' : '电信',
+          prefer: 来源.relay ? 'region' : 'isp',
+          maxLines: 来源.maxLines
+        }).then(列表 => 整理电信优选节点(列表, 来源)));
+      }
+    }
     任务.push(拉取并解析(优选域名源, { tier: 4, fallbackName: '优选域名', prefer: 'isp', maxLines: 80 }).then(列表 => 列表.filter(项 => 项.kind === 'domain').slice(0, 4)));
     const 地区网址 = 选项.pool.length ? 选项.pool : (选项.region === 'all' ? 内置地区代码 : [选项.region]).map(内置地区源).filter(Boolean);
     for (const 网址 of 地区网址) {
