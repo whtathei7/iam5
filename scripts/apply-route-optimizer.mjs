@@ -365,7 +365,20 @@ const 面板 = `                        <div style="margin-bottom: 15px;">
     '    proxies:',
     列出测速节点(大带宽节点)
   ].join('\\n');
+  const Codex优先仅 = [
+    '      - "' + 大带宽组名 + '"',
+    '      - "' + 低延迟组名 + '"',
+    '      - "🚀 节点选择"',
+    '      - "🎯 全球直连"',
+    节点仅
+  ].join('\\n');
   const 值值577 = [解码64('cHJveHktZ3JvdXBzOg=='), 大带宽组, 低延迟组, '  - name: "🚀 节点选择"', '    type: select', '    proxies:', '      - "' + 大带宽组名 + '"', '      - "' + 低延迟组名 + '"', '      - "🎯 全球直连"', 节点仅,`
+);
+
+写入(
+  'codex-openai-priority',
+  `'  - name: "🤖 OpenAI"', '    type: select', '    proxies:', 处理值选择值(名称列表584),`,
+  `'  - name: "🤖 OpenAI"', '    type: select', '    proxies:', Codex优先仅,`
 );
 
 写入(

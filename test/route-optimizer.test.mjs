@@ -406,6 +406,7 @@ test('订阅请求会走优选、保底前置和缓存', async () => {
   assert.match(Clash正文, /url: http:\/\/www\.gstatic\.com\/generate_204\s*\n\s+interval: 600\s*\n\s+tolerance: 50\s*\n\s+lazy: true/);
   assert.match(Clash正文, /- name: "🚄 电信大带宽"\s*\n\s+type: fallback\s*\n\s+url: http:\/\/www\.gstatic\.com\/generate_204\s*\n\s+interval: 1800\s*\n\s+lazy: true/);
   assert.match(Clash正文, /- name: "🚀 节点选择"\s*\n\s+type: select\s*\n\s+proxies:\s*\n\s+- "🚄 电信大带宽"\s*\n\s+- "⚡ 电信低延迟"/);
+  assert.match(Clash正文, /- name: "🤖 OpenAI"\s*\n\s+type: select\s*\n\s+proxies:\s*\n\s+- "🚄 电信大带宽"\s*\n\s+- "⚡ 电信低延迟"\s*\n\s+- "🚀 节点选择"/);
   assert.match(Clash正文, /RULE-SET,gfw,🚀 节点选择/);
   assert.match(Clash正文, /MATCH,🐟 漏网之鱼/);
   const 独立用户 = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';

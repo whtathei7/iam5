@@ -2277,6 +2277,13 @@ function 生成值值589(链接列表588, 本地值587 = {}) {
     '    proxies:',
     列出测速节点(大带宽节点)
   ].join('\n');
+  const Codex优先仅 = [
+    '      - "' + 大带宽组名 + '"',
+    '      - "' + 低延迟组名 + '"',
+    '      - "🚀 节点选择"',
+    '      - "🎯 全球直连"',
+    节点仅
+  ].join('\n');
   const 值值577 = [解码64('cHJveHktZ3JvdXBzOg=='), 大带宽组, 低延迟组, '  - name: "🚀 节点选择"', '    type: select', '    proxies:', '      - "' + 大带宽组名 + '"', '      - "' + 低延迟组名 + '"', '      - "🎯 全球直连"', 节点仅,
 /* ROUTE_OPT_END clash-auto-fastest */ '  - name: "🌍 国外媒体"', '    type: select', '    proxies:', 处理值选择值(名称列表584), '  - name: "📺 哔哩哔哩"', '    type: select', '    proxies:', 处理值选择值(名称列表584, {
     directFirst: true
@@ -2284,7 +2291,9 @@ function 生成值值589(链接列表588, 本地值587 = {}) {
     extraGroups: ['🌍 国外媒体']
   }), '  - name: "🎬 奈飞视频"', '    type: select', '    proxies:', 处理值选择值(名称列表584, {
     extraGroups: ['🌍 国外媒体']
-  }), '  - name: "📲 电报信息"', '    type: select', '    proxies:', 处理值选择值(名称列表584), '  - name: "🌐 谷歌服务"', '    type: select', '    proxies:', 处理值选择值(名称列表584), '  - name: "🤖 OpenAI"', '    type: select', '    proxies:', 处理值选择值(名称列表584), '  - name: "Ⓜ️ 微软服务"', '    type: select', '    proxies:', 处理值选择值(名称列表584, {
+  }), '  - name: "📲 电报信息"', '    type: select', '    proxies:', 处理值选择值(名称列表584), '  - name: "🌐 谷歌服务"', '    type: select', '    proxies:', 处理值选择值(名称列表584), /* ROUTE_OPT_START codex-openai-priority */
+'  - name: "🤖 OpenAI"', '    type: select', '    proxies:', Codex优先仅,
+/* ROUTE_OPT_END codex-openai-priority */ '  - name: "Ⓜ️ 微软服务"', '    type: select', '    proxies:', 处理值选择值(名称列表584, {
     directFirst: true
   }), '  - name: "🍎 苹果服务"', '    type: select', '    proxies:', 处理值选择值(名称列表584, {
     directFirst: true
