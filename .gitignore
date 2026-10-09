@@ -1,0 +1,7 @@
+# 本地节点凭据、运行缓存和第三方二进制不得提交。
+.local/
+deploy/subs-check/config/config.yaml
+deploy/subs-check/output/
+deploy/subs-check/cache/
+*.log
+

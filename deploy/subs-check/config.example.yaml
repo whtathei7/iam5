@@ -1,0 +1,58 @@
+# 由 scripts/install-codex-node-pool.ps1 替换占位符后写入本地私有目录。
+# 不要把含真实订阅地址的 config.yaml 提交到 Git。
+print-progress: false
+concurrent: 8
+media-concurrent: 4
+speed-concurrent: 1
+shuffle-test-order: true
+
+# 每 6 小时从用户所在网络重新验证；历史节点仅作为待复测候选，不绕过测活。
+cron-expression: "17 */6 * * *"
+success-limit: 16
+timeout: 8000
+alive-test-url: https://chatgpt.com/cdn-cgi/trace
+
+# 小流量测试 GitHub 下载路径，单节点最多 1 MiB / 4 秒。
+speed-test-url: https://codeload.github.com/openai/openai-python/zip/refs/heads/main
+min-speed: 128
+download-timeout: 4
+download-mb: 1
+total-speed-limit: 0
+
+listen-port: "__LISTEN_ADDRESS__:8199"
+enable-web-ui: true
+api-key: "__API_KEY__"
+rename-node: true
+node-prefix: "Codex-"
+
+# OpenAI 解锁检测在重命名之前完成，过滤器只保留带 GPT/GPT+ 标记的节点。
+media-check: true
+media-check-timeout: 8
+platforms:
+  - openai
+filter:
+  - "GPT⁺|GPT"
+
+keep-days: 7
+output-dir: "./output"
+callback-script: ""
+sub-store-port: "127.0.0.1:8299"
+sub-store-path: ""
+mihomo-overwrite-url: "http://127.0.0.1:8199/sub/ACL4SSR_Online_Full.yaml"
+save-method: local
+
+sub-urls-retry: 3
+sub-urls-concurrent: 2
+sub-urls-get-ua: "clash.meta (iam5 codex local verifier)"
+github-proxy: ""
+proxy: ""
+success-rate: 0
+ipv6: false
+dns:
+  enable: false
+
+# 禁止加载项目示例中的公开免费节点池。安装器只在这里写入用户显式提供的可信源。
+sub-urls-remote: []
+sub-urls:
+__SOURCE_URLS__
+

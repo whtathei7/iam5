@@ -337,8 +337,11 @@ const 面板 = `                        <div style="margin-bottom: 15px;">
   `  const 值值577 = [解码64('cHJveHktZ3JvdXBzOg=='), '  - name: "🚀 节点选择"', '    type: select', '    proxies:', '      - "🎯 全球直连"', 节点仅,`,
   `  const 低延迟组名 = '⚡ 电信低延迟';
   const 大带宽组名 = '🚄 电信大带宽';
+  const Codex智能组名 = '🧠 Codex智能';
+  const Codex测试网址 = 'https://chatgpt.com/cdn-cgi/trace';
   const 电信节点 = 节点列表586.filter(节点 => /电信/.test(节点.name || ''));
   const 低延迟节点 = 挑选自动测速节点(电信节点.length ? 电信节点 : 节点列表586, 8);
+  const Codex候选节点 = 挑选自动测速节点(节点列表586, 12);
   const 高速节点 = 节点列表586.filter(节点 => /高速\\d+·.*电信/.test(节点.name || '')).sort((甲, 乙) => {
     const 甲序 = Number((甲.name.match(/高速(\\d+)·/) || [])[1]) || 999;
     const 乙序 = Number((乙.name.match(/高速(\\d+)·/) || [])[1]) || 999;
@@ -349,9 +352,10 @@ const 面板 = `                        <div style="margin-bottom: 15px;">
   const 低延迟组 = [
     '  - name: "' + 低延迟组名 + '"',
     '    type: url-test',
-    '    url: http://www.gstatic.com/generate_204',
-    '    interval: 600',
-    '    tolerance: 50',
+    '    url: ' + Codex测试网址,
+    '    expected-status: 200',
+    '    interval: 900',
+    '    tolerance: 80',
     '    lazy: true',
     '    proxies:',
     列出测速节点(低延迟节点)
@@ -359,26 +363,45 @@ const 面板 = `                        <div style="margin-bottom: 15px;">
   const 大带宽组 = [
     '  - name: "' + 大带宽组名 + '"',
     '    type: fallback',
-    '    url: http://www.gstatic.com/generate_204',
+    '    url: ' + Codex测试网址,
+    '    expected-status: 200',
     '    interval: 1800',
     '    lazy: true',
     '    proxies:',
     列出测速节点(大带宽节点)
   ].join('\\n');
+  const Codex智能组 = [
+    '  - name: "' + Codex智能组名 + '"',
+    '    type: url-test',
+    '    url: ' + Codex测试网址,
+    '    expected-status: 200',
+    '    interval: 900',
+    '    tolerance: 100',
+    '    lazy: true',
+    '    proxies:',
+    列出测速节点(Codex候选节点)
+  ].join('\\n');
   const Codex优先仅 = [
+    '      - "' + Codex智能组名 + '"',
     '      - "' + 大带宽组名 + '"',
     '      - "' + 低延迟组名 + '"',
     '      - "🚀 节点选择"',
     '      - "🎯 全球直连"',
     节点仅
   ].join('\\n');
-  const 值值577 = [解码64('cHJveHktZ3JvdXBzOg=='), 大带宽组, 低延迟组, '  - name: "🚀 节点选择"', '    type: select', '    proxies:', '      - "' + 大带宽组名 + '"', '      - "' + 低延迟组名 + '"', '      - "🎯 全球直连"', 节点仅,`
+  const 值值577 = [解码64('cHJveHktZ3JvdXBzOg=='), Codex智能组, 大带宽组, 低延迟组, '  - name: "🚀 节点选择"', '    type: select', '    proxies:', '      - "' + Codex智能组名 + '"', '      - "' + 大带宽组名 + '"', '      - "' + 低延迟组名 + '"', '      - "🎯 全球直连"', 节点仅,`
 );
 
 写入(
   'codex-openai-priority',
   `'  - name: "🤖 OpenAI"', '    type: select', '    proxies:', 处理值选择值(名称列表584),`,
   `'  - name: "🤖 OpenAI"', '    type: select', '    proxies:', Codex优先仅,`
+);
+
+写入(
+  'codex-development-rules',
+  `'  - DOMAIN-KEYWORD,openai,🤖 OpenAI', '  - DOMAIN-KEYWORD,chatgpt,🤖 OpenAI', '  - DOMAIN-SUFFIX,openai.com,🤖 OpenAI', '  - DOMAIN-SUFFIX,chatgpt.com,🤖 OpenAI', '  - DOMAIN-SUFFIX,oaistatic.com,🤖 OpenAI', '  - DOMAIN-SUFFIX,oaiusercontent.com,🤖 OpenAI', '  - DOMAIN-SUFFIX,anthropic.com,🤖 OpenAI',`,
+  `'  - DOMAIN-KEYWORD,openai,🤖 OpenAI', '  - DOMAIN-KEYWORD,chatgpt,🤖 OpenAI', '  - DOMAIN-SUFFIX,openai.com,🤖 OpenAI', '  - DOMAIN-SUFFIX,chatgpt.com,🤖 OpenAI', '  - DOMAIN-SUFFIX,oaistatic.com,🤖 OpenAI', '  - DOMAIN-SUFFIX,oaiusercontent.com,🤖 OpenAI', '  - DOMAIN-SUFFIX,github.com,🤖 OpenAI', '  - DOMAIN-SUFFIX,githubusercontent.com,🤖 OpenAI', '  - DOMAIN-SUFFIX,github-cloud.githubusercontent.com,🤖 OpenAI', '  - DOMAIN-SUFFIX,codeload.github.com,🤖 OpenAI', '  - DOMAIN-SUFFIX,github-cloud.s3.amazonaws.com,🤖 OpenAI', '  - DOMAIN-SUFFIX,release-assets.githubusercontent.com,🤖 OpenAI', '  - DOMAIN-SUFFIX,npmjs.org,🤖 OpenAI', '  - DOMAIN-SUFFIX,yarnpkg.com,🤖 OpenAI', '  - DOMAIN-SUFFIX,pypi.org,🤖 OpenAI', '  - DOMAIN-SUFFIX,pythonhosted.org,🤖 OpenAI', '  - DOMAIN-SUFFIX,crates.io,🤖 OpenAI', '  - DOMAIN-SUFFIX,golang.org,🤖 OpenAI', '  - DOMAIN-SUFFIX,maven.apache.org,🤖 OpenAI', '  - DOMAIN-SUFFIX,gradle.org,🤖 OpenAI', '  - DOMAIN-SUFFIX,nuget.org,🤖 OpenAI', '  - DOMAIN-SUFFIX,anthropic.com,🤖 OpenAI',`
 );
 
 写入(

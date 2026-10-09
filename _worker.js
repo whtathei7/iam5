@@ -2249,8 +2249,11 @@ function 生成值值589(链接列表588, 本地值587 = {}) {
 /* ROUTE_OPT_START clash-auto-fastest */
   const 低延迟组名 = '⚡ 电信低延迟';
   const 大带宽组名 = '🚄 电信大带宽';
+  const Codex智能组名 = '🧠 Codex智能';
+  const Codex测试网址 = 'https://chatgpt.com/cdn-cgi/trace';
   const 电信节点 = 节点列表586.filter(节点 => /电信/.test(节点.name || ''));
   const 低延迟节点 = 挑选自动测速节点(电信节点.length ? 电信节点 : 节点列表586, 8);
+  const Codex候选节点 = 挑选自动测速节点(节点列表586, 12);
   const 高速节点 = 节点列表586.filter(节点 => /高速\d+·.*电信/.test(节点.name || '')).sort((甲, 乙) => {
     const 甲序 = Number((甲.name.match(/高速(\d+)·/) || [])[1]) || 999;
     const 乙序 = Number((乙.name.match(/高速(\d+)·/) || [])[1]) || 999;
@@ -2261,9 +2264,10 @@ function 生成值值589(链接列表588, 本地值587 = {}) {
   const 低延迟组 = [
     '  - name: "' + 低延迟组名 + '"',
     '    type: url-test',
-    '    url: http://www.gstatic.com/generate_204',
-    '    interval: 600',
-    '    tolerance: 50',
+    '    url: ' + Codex测试网址,
+    '    expected-status: 200',
+    '    interval: 900',
+    '    tolerance: 80',
     '    lazy: true',
     '    proxies:',
     列出测速节点(低延迟节点)
@@ -2271,20 +2275,33 @@ function 生成值值589(链接列表588, 本地值587 = {}) {
   const 大带宽组 = [
     '  - name: "' + 大带宽组名 + '"',
     '    type: fallback',
-    '    url: http://www.gstatic.com/generate_204',
+    '    url: ' + Codex测试网址,
+    '    expected-status: 200',
     '    interval: 1800',
     '    lazy: true',
     '    proxies:',
     列出测速节点(大带宽节点)
   ].join('\n');
+  const Codex智能组 = [
+    '  - name: "' + Codex智能组名 + '"',
+    '    type: url-test',
+    '    url: ' + Codex测试网址,
+    '    expected-status: 200',
+    '    interval: 900',
+    '    tolerance: 100',
+    '    lazy: true',
+    '    proxies:',
+    列出测速节点(Codex候选节点)
+  ].join('\n');
   const Codex优先仅 = [
+    '      - "' + Codex智能组名 + '"',
     '      - "' + 大带宽组名 + '"',
     '      - "' + 低延迟组名 + '"',
     '      - "🚀 节点选择"',
     '      - "🎯 全球直连"',
     节点仅
   ].join('\n');
-  const 值值577 = [解码64('cHJveHktZ3JvdXBzOg=='), 大带宽组, 低延迟组, '  - name: "🚀 节点选择"', '    type: select', '    proxies:', '      - "' + 大带宽组名 + '"', '      - "' + 低延迟组名 + '"', '      - "🎯 全球直连"', 节点仅,
+  const 值值577 = [解码64('cHJveHktZ3JvdXBzOg=='), Codex智能组, 大带宽组, 低延迟组, '  - name: "🚀 节点选择"', '    type: select', '    proxies:', '      - "' + Codex智能组名 + '"', '      - "' + 大带宽组名 + '"', '      - "' + 低延迟组名 + '"', '      - "🎯 全球直连"', 节点仅,
 /* ROUTE_OPT_END clash-auto-fastest */ '  - name: "🌍 国外媒体"', '    type: select', '    proxies:', 处理值选择值(名称列表584), '  - name: "📺 哔哩哔哩"', '    type: select', '    proxies:', 处理值选择值(名称列表584, {
     directFirst: true
   }), '  - name: "📹 油管视频"', '    type: select', '    proxies:', 处理值选择值(名称列表584, {
@@ -2303,7 +2320,9 @@ function 生成值值589(链接列表588, 本地值587 = {}) {
   const 值基础576 = 解码64('aHR0cHM6Ly9mYXN0bHkuanNkZWxpdnIubmV0L2doL0xveWFsc29sZGllci9jbGFzaC1ydWxlc0ByZWxlYXNl');
   const 提供器 = (名称575, 本地值574) => [`  ${名称575}:`, `    type: http`, `    behavior: ${本地值574}`, `    url: "${值基础576}/${名称575}.txt"`, `    path: ./rulesets/loyalsoldier/${名称575}.txt`, `    interval: 86400`].join('\n');
   const 规则值 = ['rule-providers:', 提供器('reject', 'domain'), 提供器('icloud', 'domain'), 提供器('apple', 'domain'), 提供器('google', 'domain'), 提供器(解码64('cHJveHk='), 'domain'), 提供器('direct', 'domain'), 提供器('private', 'domain'), 提供器('gfw', 'domain'), 提供器('greatfire', 'domain'), 提供器('tld-not-cn', 'domain'), 提供器('telegramcidr', 'ipcidr'), 提供器('cncidr', 'ipcidr'), 提供器('lancidr', 'ipcidr'), 提供器('applications', 'classical'), ''];
-  const 规则列表 = ['rules:', '  - DOMAIN-SUFFIX,acl4.ssr,🎯 全球直连', '  - DOMAIN-SUFFIX,local,🎯 全球直连', 解码64('ICAtIERPTUFJTixjbGFzaC5yYXpvcmQudG9wLPCfjq8g5YWo55CD55u06L+e'), '  - DOMAIN,yacd.haishan.me,🎯 全球直连', '  - DOMAIN,yacd.metacubex.one,🎯 全球直连', '  - DOMAIN,d.metacubex.one,🎯 全球直连', '  - DOMAIN-SUFFIX,googleapis.cn,🌐 谷歌服务', '  - DOMAIN-SUFFIX,gstatic.com,🌐 谷歌服务', '  - DOMAIN-SUFFIX,xn--ngstr-lra8j.com,🌐 谷歌服务', '  - DOMAIN-SUFFIX,googlevideo.com,📹 油管视频', '  - DOMAIN-SUFFIX,googleusercontent.com,🌐 谷歌服务', '  - DOMAIN-KEYWORD,youtube,📹 油管视频', '  - DOMAIN-SUFFIX,youtube.com,📹 油管视频', '  - DOMAIN-SUFFIX,youtu.be,📹 油管视频', '  - DOMAIN-KEYWORD,netflix,🎬 奈飞视频', '  - DOMAIN-SUFFIX,nflxext.com,🎬 奈飞视频', '  - DOMAIN-SUFFIX,nflxso.net,🎬 奈飞视频', '  - DOMAIN-SUFFIX,nflxvideo.net,🎬 奈飞视频', '  - DOMAIN-SUFFIX,nflximg.com,🎬 奈飞视频', '  - DOMAIN-SUFFIX,nflximg.net,🎬 奈飞视频', '  - DOMAIN-SUFFIX,netflix.com,🎬 奈飞视频', '  - DOMAIN-SUFFIX,netflix.net,🎬 奈飞视频', '  - DOMAIN-SUFFIX,bilibili.com,📺 哔哩哔哩', '  - DOMAIN-SUFFIX,bilivideo.com,📺 哔哩哔哩', '  - DOMAIN-SUFFIX,hdslb.com,📺 哔哩哔哩', '  - DOMAIN-KEYWORD,openai,🤖 OpenAI', '  - DOMAIN-KEYWORD,chatgpt,🤖 OpenAI', '  - DOMAIN-SUFFIX,openai.com,🤖 OpenAI', '  - DOMAIN-SUFFIX,chatgpt.com,🤖 OpenAI', '  - DOMAIN-SUFFIX,oaistatic.com,🤖 OpenAI', '  - DOMAIN-SUFFIX,oaiusercontent.com,🤖 OpenAI', '  - DOMAIN-SUFFIX,anthropic.com,🤖 OpenAI', '  - DOMAIN-SUFFIX,claude.ai,🤖 OpenAI', '  - DOMAIN-SUFFIX,perplexity.ai,🤖 OpenAI', '  - DOMAIN-SUFFIX,gemini.google.com,🤖 OpenAI', '  - RULE-SET,applications,🎯 全球直连', '  - RULE-SET,private,🎯 全球直连', '  - RULE-SET,reject,🛑 全球拦截', '  - RULE-SET,icloud,🍎 苹果服务', '  - RULE-SET,apple,🍎 苹果服务', '  - RULE-SET,google,🌐 谷歌服务', 解码64('ICAtIFJVTEUtU0VULHByb3h5LPCfmoAg6IqC54K56YCJ5oup'), '  - RULE-SET,gfw,🚀 节点选择', '  - RULE-SET,greatfire,🚀 节点选择', '  - RULE-SET,tld-not-cn,🚀 节点选择', '  - RULE-SET,direct,🎯 全球直连', '  - RULE-SET,lancidr,🎯 全球直连,no-resolve', '  - RULE-SET,cncidr,🎯 全球直连,no-resolve', '  - RULE-SET,telegramcidr,📲 电报信息,no-resolve', '  - GEOIP,LAN,🎯 全球直连,no-resolve', '  - GEOIP,CN,🎯 全球直连,no-resolve', '  - MATCH,🐟 漏网之鱼'];
+  const 规则列表 = ['rules:', '  - DOMAIN-SUFFIX,acl4.ssr,🎯 全球直连', '  - DOMAIN-SUFFIX,local,🎯 全球直连', 解码64('ICAtIERPTUFJTixjbGFzaC5yYXpvcmQudG9wLPCfjq8g5YWo55CD55u06L+e'), '  - DOMAIN,yacd.haishan.me,🎯 全球直连', '  - DOMAIN,yacd.metacubex.one,🎯 全球直连', '  - DOMAIN,d.metacubex.one,🎯 全球直连', '  - DOMAIN-SUFFIX,googleapis.cn,🌐 谷歌服务', '  - DOMAIN-SUFFIX,gstatic.com,🌐 谷歌服务', '  - DOMAIN-SUFFIX,xn--ngstr-lra8j.com,🌐 谷歌服务', '  - DOMAIN-SUFFIX,googlevideo.com,📹 油管视频', '  - DOMAIN-SUFFIX,googleusercontent.com,🌐 谷歌服务', '  - DOMAIN-KEYWORD,youtube,📹 油管视频', '  - DOMAIN-SUFFIX,youtube.com,📹 油管视频', '  - DOMAIN-SUFFIX,youtu.be,📹 油管视频', '  - DOMAIN-KEYWORD,netflix,🎬 奈飞视频', '  - DOMAIN-SUFFIX,nflxext.com,🎬 奈飞视频', '  - DOMAIN-SUFFIX,nflxso.net,🎬 奈飞视频', '  - DOMAIN-SUFFIX,nflxvideo.net,🎬 奈飞视频', '  - DOMAIN-SUFFIX,nflximg.com,🎬 奈飞视频', '  - DOMAIN-SUFFIX,nflximg.net,🎬 奈飞视频', '  - DOMAIN-SUFFIX,netflix.com,🎬 奈飞视频', '  - DOMAIN-SUFFIX,netflix.net,🎬 奈飞视频', '  - DOMAIN-SUFFIX,bilibili.com,📺 哔哩哔哩', '  - DOMAIN-SUFFIX,bilivideo.com,📺 哔哩哔哩', '  - DOMAIN-SUFFIX,hdslb.com,📺 哔哩哔哩', /* ROUTE_OPT_START codex-development-rules */
+'  - DOMAIN-KEYWORD,openai,🤖 OpenAI', '  - DOMAIN-KEYWORD,chatgpt,🤖 OpenAI', '  - DOMAIN-SUFFIX,openai.com,🤖 OpenAI', '  - DOMAIN-SUFFIX,chatgpt.com,🤖 OpenAI', '  - DOMAIN-SUFFIX,oaistatic.com,🤖 OpenAI', '  - DOMAIN-SUFFIX,oaiusercontent.com,🤖 OpenAI', '  - DOMAIN-SUFFIX,github.com,🤖 OpenAI', '  - DOMAIN-SUFFIX,githubusercontent.com,🤖 OpenAI', '  - DOMAIN-SUFFIX,github-cloud.githubusercontent.com,🤖 OpenAI', '  - DOMAIN-SUFFIX,codeload.github.com,🤖 OpenAI', '  - DOMAIN-SUFFIX,github-cloud.s3.amazonaws.com,🤖 OpenAI', '  - DOMAIN-SUFFIX,release-assets.githubusercontent.com,🤖 OpenAI', '  - DOMAIN-SUFFIX,npmjs.org,🤖 OpenAI', '  - DOMAIN-SUFFIX,yarnpkg.com,🤖 OpenAI', '  - DOMAIN-SUFFIX,pypi.org,🤖 OpenAI', '  - DOMAIN-SUFFIX,pythonhosted.org,🤖 OpenAI', '  - DOMAIN-SUFFIX,crates.io,🤖 OpenAI', '  - DOMAIN-SUFFIX,golang.org,🤖 OpenAI', '  - DOMAIN-SUFFIX,maven.apache.org,🤖 OpenAI', '  - DOMAIN-SUFFIX,gradle.org,🤖 OpenAI', '  - DOMAIN-SUFFIX,nuget.org,🤖 OpenAI', '  - DOMAIN-SUFFIX,anthropic.com,🤖 OpenAI',
+/* ROUTE_OPT_END codex-development-rules */ '  - DOMAIN-SUFFIX,claude.ai,🤖 OpenAI', '  - DOMAIN-SUFFIX,perplexity.ai,🤖 OpenAI', '  - DOMAIN-SUFFIX,gemini.google.com,🤖 OpenAI', '  - RULE-SET,applications,🎯 全球直连', '  - RULE-SET,private,🎯 全球直连', '  - RULE-SET,reject,🛑 全球拦截', '  - RULE-SET,icloud,🍎 苹果服务', '  - RULE-SET,apple,🍎 苹果服务', '  - RULE-SET,google,🌐 谷歌服务', 解码64('ICAtIFJVTEUtU0VULHByb3h5LPCfmoAg6IqC54K56YCJ5oup'), '  - RULE-SET,gfw,🚀 节点选择', '  - RULE-SET,greatfire,🚀 节点选择', '  - RULE-SET,tld-not-cn,🚀 节点选择', '  - RULE-SET,direct,🎯 全球直连', '  - RULE-SET,lancidr,🎯 全球直连,no-resolve', '  - RULE-SET,cncidr,🎯 全球直连,no-resolve', '  - RULE-SET,telegramcidr,📲 电报信息,no-resolve', '  - GEOIP,LAN,🎯 全球直连,no-resolve', '  - GEOIP,CN,🎯 全球直连,no-resolve', '  - MATCH,🐟 漏网之鱼'];
   return [头部581.join('\n'), 值值580.join('\n'), '', 值值577.join('\n'), 规则值.join('\n'), 规则列表.join('\n'), ''].join('\n');
 }
 

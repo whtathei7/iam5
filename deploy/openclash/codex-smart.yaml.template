@@ -1,0 +1,117 @@
+mixed-port: 7890
+allow-lan: true
+mode: rule
+log-level: info
+ipv6: false
+external-controller: 127.0.0.1:9090
+unified-delay: true
+tcp-concurrent: true
+profile:
+  store-selected: true
+  store-fake-ip: true
+
+geodata-mode: true
+geo-auto-update: true
+geo-update-interval: 24
+geox-url:
+  geoip: "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geoip.dat"
+  geosite: "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geosite.dat"
+  mmdb: "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/country.mmdb"
+  asn: "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/GeoLite2-ASN.mmdb"
+
+dns:
+  enable: true
+  listen: 0.0.0.0:1053
+  ipv6: false
+  enhanced-mode: fake-ip
+  fake-ip-range: 198.18.0.1/16
+  fake-ip-filter:
+    - "*.lan"
+    - "+.local"
+    - "+.msftconnecttest.com"
+    - "+.msftncsi.com"
+  default-nameserver:
+    - 223.5.5.5
+    - 119.29.29.29
+  nameserver:
+    - https://dns.alidns.com/dns-query
+    - https://doh.pub/dns-query
+  fallback:
+    - https://1.1.1.1/dns-query
+    - https://8.8.8.8/dns-query
+  fallback-filter:
+    geoip: true
+    geoip-code: CN
+
+proxy-providers:
+  codex-local:
+    type: http
+    url: "__PROVIDER_URL__"
+    path: ./proxy_provider/codex-local.yaml
+    interval: 21600
+    health-check:
+      enable: true
+      url: https://chatgpt.com/cdn-cgi/trace
+      expected-status: 200
+      interval: 21600
+      lazy: true
+
+proxy-groups:
+  - name: "🧠 Codex智能"
+    type: url-test
+    use:
+      - codex-local
+    url: https://chatgpt.com/cdn-cgi/trace
+    expected-status: 200
+    interval: 900
+    tolerance: 100
+    lazy: true
+  - name: "🚄 Codex大带宽"
+    type: fallback
+    use:
+      - codex-local
+    url: https://chatgpt.com/cdn-cgi/trace
+    expected-status: 200
+    interval: 1800
+    lazy: true
+  - name: "🤖 OpenAI"
+    type: select
+    proxies:
+      - "🧠 Codex智能"
+      - "🚄 Codex大带宽"
+      - DIRECT
+  - name: "🚀 节点选择"
+    type: select
+    proxies:
+      - "🧠 Codex智能"
+      - "🚄 Codex大带宽"
+      - DIRECT
+
+rules:
+  - DOMAIN-KEYWORD,openai,🤖 OpenAI
+  - DOMAIN-KEYWORD,chatgpt,🤖 OpenAI
+  - DOMAIN-SUFFIX,openai.com,🤖 OpenAI
+  - DOMAIN-SUFFIX,chatgpt.com,🤖 OpenAI
+  - DOMAIN-SUFFIX,oaistatic.com,🤖 OpenAI
+  - DOMAIN-SUFFIX,oaiusercontent.com,🤖 OpenAI
+  - DOMAIN-SUFFIX,github.com,🤖 OpenAI
+  - DOMAIN-SUFFIX,githubusercontent.com,🤖 OpenAI
+  - DOMAIN-SUFFIX,github-cloud.githubusercontent.com,🤖 OpenAI
+  - DOMAIN-SUFFIX,github-cloud.s3.amazonaws.com,🤖 OpenAI
+  - DOMAIN-SUFFIX,codeload.github.com,🤖 OpenAI
+  - DOMAIN-SUFFIX,release-assets.githubusercontent.com,🤖 OpenAI
+  - DOMAIN-SUFFIX,npmjs.org,🤖 OpenAI
+  - DOMAIN-SUFFIX,yarnpkg.com,🤖 OpenAI
+  - DOMAIN-SUFFIX,pypi.org,🤖 OpenAI
+  - DOMAIN-SUFFIX,pythonhosted.org,🤖 OpenAI
+  - DOMAIN-SUFFIX,crates.io,🤖 OpenAI
+  - DOMAIN-SUFFIX,static.crates.io,🤖 OpenAI
+  - DOMAIN-SUFFIX,golang.org,🤖 OpenAI
+  - DOMAIN-SUFFIX,maven.apache.org,🤖 OpenAI
+  - DOMAIN-SUFFIX,gradle.org,🤖 OpenAI
+  - DOMAIN-SUFFIX,nuget.org,🤖 OpenAI
+  - GEOSITE,private,DIRECT
+  - GEOIP,private,DIRECT,no-resolve
+  - GEOSITE,CN,DIRECT
+  - GEOIP,CN,DIRECT,no-resolve
+  - MATCH,🚀 节点选择

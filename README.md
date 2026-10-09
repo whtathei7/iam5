@@ -40,7 +40,47 @@
 8. **轮换**：保底和前 8 个优选地址每 5 分钟错开一位。
 9. **电信双模式**：Clash/OpenClash 配置新增 `🚄 电信大带宽` 和 `⚡ 电信低延迟`。大带宽组从来源速度、历史成功率和连续失败次数综合筛出的 6 个电信节点中按顺序回退，每 1,800 秒检查一次；低延迟组从 8 个电信候选中每 600 秒运行 URL-Test，切换容差为 50 ms。`🚀 节点选择` 默认使用大带宽组，同时保留低延迟、直连和全部节点供手动回退。两个组都启用 `lazy`，只有实际使用时才测速；持续使用大带宽组估算每客户端每天约 288 次健康检查，使用低延迟组约 1,152 次，均低于旧版 12 个节点每 600 秒约 1,728 次。
 10. **稳定性历史**：每次线路缓存刷新时，把 Worker 边缘 TLS 握手成功、失败和连续失败次数写入同一个 KV 缓存。连续失败会降级，达到 3 次的节点不会进入大带宽候选；成功率采用平滑计算，避免只有一次成功的新节点压过长期稳定节点。该历史只代表 Cloudflare 边缘测活，用户本地链路仍以 OpenClash 的实际测速为准。
-11. **Codex/OpenAI 优先**：Clash 的 `🤖 OpenAI` 组默认依次使用 `🚄 电信大带宽`、`⚡ 电信低延迟`、通用自动组和手动节点。Codex 的流式请求因此优先走经过稳定性历史筛选的线路；需要更低交互延迟时，可在 OpenClash 中把该组切换到低延迟模式。
+11. **Codex/OpenAI 优先**：Clash 的 `🤖 OpenAI` 组默认依次使用 `🧠 Codex智能`、`🚄 电信大带宽`、`⚡ 电信低延迟`、通用自动组和手动节点。智能组从不同 SNI/入口轮流取最多 12 个候选，以 ChatGPT trace 每 900 秒检测一次并使用 100 ms 容差；OpenClash 开启 Smart 自动转换后会进一步利用运行时历史表现。
+
+### Codex 本地可信节点池
+
+Worker 无法观察用户所在地的电信链路，因此项目增加了可选的两级筛选。第一层 Worker 只负责生成候选；第二层在运行 Codex 的同一局域网使用 [beck-8/subs-check](https://github.com/beck-8/subs-check) 做实际测活、OpenAI 解锁检查、小流量 GitHub 下载测试和 7 天历史复测。OpenClash 最终只读取第二层输出。
+
+Windows PowerShell 中运行（订阅地址不会写进 Git 仓库）：
+
+```powershell
+.\scripts\install-codex-node-pool.ps1 -SourceUrl @(
+  'https://第一个可信订阅',
+  'https://第二个独立可信订阅'
+)
+```
+
+安装器会下载 GitHub 最新正式版 Windows x86_64 资产并核对发布者提供的 SHA256，配置为每 6 小时检测一次：
+
+- 存活目标使用 `https://chatgpt.com/cdn-cgi/trace`，不再用与 Codex 无关的 gstatic 204。
+- 只保留通过 OpenAI 检测并带 `GPT`/`GPT+` 标记的节点。
+- 带宽测试并发为 1，每节点最多下载 1 MiB，避免消耗 Cloudflare 免费额度。
+- 最终目标约 16～24 个节点，最近 7 天成功节点只会重新进入待测队列，不会绕过本轮检查。
+- 示例配置明确清空 `sub-urls-remote`，不会混入 subs-check 上游示例中的公共免费节点。
+
+检测完成后，输出地址类似：
+
+```text
+http://192.168.3.15:8199/sub/all.yaml
+```
+
+把整个仓库复制到 OpenWrt，使用安装器实际输出的地址配置 OpenClash：
+
+```sh
+sh scripts/configure-openclash-codex.sh 'http://192.168.3.15:8199/sub/all.yaml'
+sh scripts/verify-openclash-codex.sh
+```
+
+路由器脚本会先用实际 Mihomo 内核校验新配置，再切换并重启；若进程未启动会恢复原配置路径。原配置路径同时记录在 `/etc/openclash/codex-smart.previous-config`。配置通过 `proxy-provider` 每 6 小时读取本地结果，`🧠 Codex智能` 每 900 秒用 ChatGPT 目标测试、100 ms 容差；OpenClash 的 Smart 自动转换已启用，但 LightGBM 和训练数据收集关闭，以减少路由器内存和闪存写入。
+
+GitHub、codeload、release-assets、npm、PyPI、crates、Go、Maven/Gradle 和 NuGet 等 Codex 开发依赖域名也进入 `🤖 OpenAI` 组。Worker 直接生成的 Clash 配置同样增加 `🧠 Codex智能`，并将三种自动组的检查目标改为 ChatGPT trace。
+
+这套链路不会把一个 Worker 复制成真正的多后端。至少两个 `SourceUrl` 应来自不同服务商、不同域名/SNI 和不同 ASN；最佳实践是再加入一个自有 WireGuard/VPS 出口。只有一个来源时安装器会明确警告共同故障仍然存在。
 
 ### 独立入口容灾
 
