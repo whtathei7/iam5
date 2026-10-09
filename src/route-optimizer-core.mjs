@@ -1,5 +1,6 @@
 // 线路优化的纯逻辑。订阅生成时由 _worker.js 调用，单测直接引用本文件。
-// 思路借鉴 CFNext：按运营商保留实测节点、放行社区中转、备用端口、保底前置、IPv6 后置、头部轮换。
+// 思路借鉴 CFNext：按测速和延迟挑高质量地址、443 优先、分运营商留名额、订阅里提供自动选择最快节点。
+// 主力来自 BestCF 首页列出的电信、移动实测结果；联通和地区中转只作补位。
 // Worker 上的握手只能证明 Cloudflare 边缘自己能连，不能据此丢掉用户侧已经测过速度的地址。
 // 实现独立，不复制其源码。
 
@@ -13,20 +14,23 @@ export const 地区云墙源 = {
   KR: 'https://bestcf.pages.dev/random-region/KR/20.txt',
   DE: 'https://bestcf.pages.dev/random-region/DE/20.txt'
 };
-export const 实测优选源 = [
-  'https://bestcf.pages.dev/uouin/all.txt',
-  'https://bestcf.pages.dev/cfyes/ipv4.txt'
-];
-// BestCF 首页列出的中国电信专用源。微测源同时含三网，必须按“电信”标签筛选；
-// 后两个是电信线路实测的非 Cloudflare 网段入口，按社区中转节点处理。
-export const 电信优选源 = [
-  { url: 'https://bestcf.pages.dev/wetest/ipv4.txt', taggedOnly: true, relay: false, maxLines: 40, limit: 12 },
-  { url: 'https://cf.junzhen.qzz.io/best_ips_bj.txt', taggedOnly: false, relay: true, maxLines: 80, limit: 12 },
-  { url: 'https://raw.githubusercontent.com/love-ztm/cfip/refs/heads/main/best_ips.txt', taggedOnly: false, relay: true, maxLines: 40, limit: 8 }
+// BestCF 首页上带运营商标签或实测速度的源。电信、移动是主力；联通只留少量。
+// 微测、麒麟、CFYes、vvHan 都在 bestcf.pages.dev，必须按标签拆开。
+// 后三个是首页列出的电信/移动专线，地址不在 Cloudflare 官方网段，按社区中转处理。
+export const 主力优选源 = [
+  { url: 'https://bestcf.pages.dev/uouin/all.txt', isps: ['电信', '移动', '联通'], taggedOnly: true, relay: false, maxLines: 80, limits: { 电信: 8, 移动: 6, 联通: 3 } },
+  { url: 'https://bestcf.pages.dev/wetest/ipv4.txt', isps: ['电信', '移动', '联通'], taggedOnly: true, relay: false, maxLines: 40, limits: { 电信: 5, 移动: 5, 联通: 2 } },
+  { url: 'https://bestcf.pages.dev/cfyes/ipv4.txt', isps: ['电信', '移动', '联通'], taggedOnly: true, relay: false, maxLines: 40, limits: { 电信: 5, 移动: 5, 联通: 2 } },
+  { url: 'https://bestcf.pages.dev/vvhan/ipv4.txt', isps: ['电信', '移动'], taggedOnly: true, relay: false, maxLines: 80, limits: { 电信: 4, 移动: 4 } },
+  { url: 'https://cf.junzhen.qzz.io/best_ips_bj.txt', isps: ['电信'], taggedOnly: false, relay: true, maxLines: 80, limits: { 电信: 4 } },
+  { url: 'https://raw.githubusercontent.com/love-ztm/cfip/refs/heads/main/best_ips.txt', isps: ['电信'], taggedOnly: false, relay: true, maxLines: 40, limits: { 电信: 4 } },
+  { url: 'https://raw.githubusercontent.com/svip-s/cloudflare_ip/refs/heads/main/best_ips.txt', isps: ['移动'], taggedOnly: false, relay: true, maxLines: 40, limits: { 移动: 4 } }
 ];
 export const 优选域名源 = 'https://bestcf.pages.dev/domain/all.txt';
 export const 六版优选源 = 'https://bestcf.pages.dev/cfyes/ipv6.txt';
-export const 运营商顺序 = ['移动', '联通', '电信', '多线', '中转', '其他'];
+export const 运营商顺序 = ['电信', '移动', '联通', '多线', '中转', '其他'];
+export const 主力节拍 = ['电信', '移动', '电信', '移动', '联通', '中转', '多线', '其他'];
+export const 自动测速网址 = 'https://www.gstatic.com/generate_204';
 export const 云墙安全端口 = [443, 2053, 2083, 2087, 2096, 8443];
 export const 云墙明文端口 = [80, 8080, 8880, 2052, 2082, 2086, 2095];
 export const 云墙四版网段 = [
@@ -382,7 +386,7 @@ export function 解析优选行(行, 配置 = {}) {
   const 地区 = 识别地区(备注);
   const 线路 = 识别线路(备注);
   const 延迟匹配 = 备注.match(/(\d+(?:\.\d+)?)\s*ms/i);
-  const 速度匹配 = 备注.match(/(\d+(?:\.\d+)?)\s*(?:mb(?:ps|\/s)|m(?=\s|\]|\)|$))/i);
+  const 速度值 = 解析速度(备注);
   const 偏向地区 = 配置.prefer === 'region';
   const 名称 = (偏向地区 ? (地区 && 地区.名) || 线路 : 线路 || (地区 && 地区.名)) || 配置.fallbackName || '优选IP';
   return {
@@ -392,9 +396,19 @@ export function 解析优选行(行, 配置 = {}) {
     tier: 配置.tier == null ? 1 : 配置.tier,
     kind: 种类,
     latency: 延迟匹配 ? Number(延迟匹配[1]) : null,
-    speed: 速度匹配 ? Number(速度匹配[1]) : 0,
+    speed: 速度值,
     region: 地区 ? 地区.码 : ''
   };
+}
+
+export function 解析速度(备注) {
+  const 文本 = String(备注 || '');
+  const 比特 = 文本.match(/(\d+(?:\.\d+)?)\s*mbps\b/i);
+  if (比特) return Math.round((Number(比特[1]) / 8) * 100) / 100;
+  const 字节 = 文本.match(/(\d+(?:\.\d+)?)\s*mb\/s\b/i);
+  if (字节) return Number(字节[1]);
+  const 简写 = 文本.match(/(\d+(?:\.\d+)?)\s*m(?=\s|\]|\)|$)/i);
+  return 简写 ? Number(简写[1]) : 0;
 }
 
 export function 解析优选文本(文本, 配置 = {}) {
@@ -422,10 +436,16 @@ export function 比较优选(甲, 乙) {
     const 乙率 = 历史成功率(乙);
     if (甲率 !== 乙率) return 乙率 - 甲率;
   }
+  const 甲速 = Number(甲.speed) || 0;
+  const 乙速 = Number(乙.speed) || 0;
+  if (甲速 > 0 && 乙速 > 0 && 甲速 !== 乙速) return 乙速 - 甲速;
   const 甲延迟 = 甲.latency == null ? 1e9 : 甲.latency;
   const 乙延迟 = 乙.latency == null ? 1e9 : 乙.latency;
   if (甲延迟 !== 乙延迟) return 甲延迟 - 乙延迟;
-  return (乙.speed || 0) - (甲.speed || 0);
+  if (甲速 !== 乙速) return 乙速 - 甲速;
+  const 甲口 = Number(甲.port) === 443 ? 0 : 1;
+  const 乙口 = Number(乙.port) === 443 ? 0 : 1;
+  return 甲口 - 乙口;
 }
 
 export function 历史成功率(节点) {
@@ -475,24 +495,53 @@ export function 挑选电信大带宽节点(列表, 数量 = 6) {
   return 候选.slice(0, 上限);
 }
 
-export function 整理电信优选节点(列表, 配置 = {}) {
-  const 只收电信标签 = !!配置.taggedOnly;
+function 四版前缀(地址) {
+  const 段 = String(地址 || '').split('.');
+  if (段.length !== 4 || 段.some(节 => !/^\d{1,3}$/.test(节))) return String(地址 || '');
+  return 段.slice(0, 3).join('.');
+}
+
+export function 分散优选(列表, 数量 = 8) {
+  const 上限 = Math.max(1, Math.min(40, Number(数量) || 8));
+  const 排序 = (列表 || []).filter(Boolean).slice().sort(比较优选);
+  const 已见 = new Set();
+  const 先 = [];
+  const 后 = [];
+  for (const 节点 of 排序) {
+    const 前缀 = 四版前缀(节点.ip);
+    if (!已见.has(前缀)) {
+      已见.add(前缀);
+      先.push(节点);
+    } else {
+      后.push(节点);
+    }
+  }
+  return 先.concat(后).slice(0, 上限);
+}
+
+export function 整理运营商优选节点(列表, 配置 = {}) {
+  const 目标 = 配置.isp || '电信';
+  const 只收标签 = !!配置.taggedOnly;
   const 是中转源 = !!配置.relay;
   const 上限 = Math.max(1, Math.min(40, Number(配置.limit) || 12));
-  return (列表 || [])
-    .filter(节点 => 节点 && 节点.kind === 'v4' && (!只收电信标签 || 运营商名(节点) === '电信'))
+  const 过滤 = (列表 || [])
+    .filter(节点 => 节点 && 节点.kind === 'v4' && (!只收标签 || 运营商名(节点) === 目标))
     .map(节点 => {
       const 外部中转 = 是中转源 && !位于云墙网段(节点.ip);
       const 地区名 = 节点.region ? 地区中文[节点.region] || 节点.region : '';
       return {
         ...节点,
-        isp: 是中转源 ? `电信中转${地区名 ? `·${地区名}` : ''}` : '电信',
+        isp: 是中转源 ? `${目标}中转${地区名 ? `·${地区名}` : ''}` : 目标,
         sourced: true,
         relay: 外部中转 || !!节点.relay
       };
     })
-    .sort(比较优选)
-    .slice(0, 上限);
+    .sort(比较优选);
+  return 分散优选(过滤, 上限);
+}
+
+export function 整理电信优选节点(列表, 配置 = {}) {
+  return 整理运营商优选节点(列表, { ...配置, isp: '电信' });
 }
 
 export function 挑选自动测速节点(列表, 数量 = 12) {
@@ -523,6 +572,42 @@ export function 挑选自动测速节点(列表, 数量 = 12) {
       if (结果.length >= 上限) break;
     }
     轮次++;
+  }
+  return 结果;
+}
+
+export function 挑选自动最快节点(列表, 数量 = 8) {
+  const 上限 = Math.max(1, Math.min(16, Number(数量) || 8));
+  const 分组 = new Map([['电信', []], ['移动', []], ['联通', []], ['其他', []]]);
+  const 已见线路 = new Set();
+  for (const 节点 of 列表 || []) {
+    if (!节点 || !节点.name) continue;
+    const 线路键 = 节点.server
+      ? `${String(节点.server).toLowerCase()}|${节点.port || 443}|${String(节点.sni || 节点.host || '').toLowerCase()}`
+      : `name|${节点.name}`;
+    if (已见线路.has(线路键)) continue;
+    已见线路.add(线路键);
+    const 名 = String(节点.name);
+    const 类别 = 名.includes('电信') ? '电信' : 名.includes('移动') ? '移动' : 名.includes('联通') ? '联通' : '其他';
+    分组.get(类别).push(节点);
+  }
+  const 节拍 = ['电信', '移动', '电信', '移动', '联通', '其他'];
+  const 结果 = [];
+  const 已见名 = new Set();
+  for (;;) {
+    if (结果.length >= 上限) break;
+    let 有 = false;
+    for (const 类别 of 节拍) {
+      if (结果.length >= 上限) break;
+      const 列 = 分组.get(类别);
+      while (列.length && 已见名.has(列[0].name)) 列.shift();
+      if (!列.length) continue;
+      const 节点 = 列.shift();
+      已见名.add(节点.name);
+      结果.push(节点);
+      有 = true;
+    }
+    if (!有) break;
   }
   return 结果;
 }
@@ -610,6 +695,18 @@ export function 保留可用速度(列表, 每家 = 4) {
       continue;
     }
     const 排序 = 节点列.slice().sort(比较优选);
+    if (键 === '电信' || 键 === '移动') {
+      const 选出 = [];
+      const 已见 = new Set();
+      const 测速 = 排序.filter(节点 => !节点.relay && 节点.speed >= 1);
+      const 精选 = 排序.filter(节点 => !节点.relay && !(节点.speed >= 1));
+      const 中转 = 排序.filter(节点 => 节点.relay);
+      收入不重复(选出, 已见, 测速, 8);
+      收入不重复(选出, 已见, 精选, 4);
+      收入不重复(选出, 已见, 中转, 4);
+      结果.push(...选出);
+      continue;
+    }
     const 快 = 排序.filter(节点 => 节点.relay || 节点.speed >= 1);
     const 慢 = 排序.filter(节点 => !节点.relay && 节点.speed > 0 && 节点.speed < 1);
     const 未知 = 排序.filter(节点 => !节点.relay && !(节点.speed > 0));
@@ -617,6 +714,18 @@ export function 保留可用速度(列表, 每家 = 4) {
     结果.push(...主体.concat(未知).slice(0, 上限));
   }
   return 结果;
+}
+
+function 收入不重复(目标, 已见, 候选, 数量) {
+  let 已加 = 0;
+  for (const 节点 of 候选 || []) {
+    if (已加 >= 数量) return;
+    const 键 = 节点键(节点);
+    if (已见.has(键)) continue;
+    已见.add(键);
+    目标.push(节点);
+    已加++;
+  }
 }
 
 export function 应用握手结果(列表, 探测, 选项, 严格 = false) {
@@ -804,7 +913,7 @@ function 按地区交错(列表) {
   return 结果;
 }
 
-function 按运营商交错(列表) {
+function 按运营商分组(列表) {
   const 分组 = new Map(运营商顺序.map(名 => [名, []]));
   for (const 节点 of 列表 || []) {
     const 名 = 运营商名(节点);
@@ -815,11 +924,31 @@ function 按运营商交错(列表) {
     if (名 === '中转') 分组.set(名, 按地区交错(节点列));
     else 节点列.sort(比较优选);
   }
-  const 列 = [...分组.values()];
+  return 分组;
+}
+
+function 按运营商交错(列表) {
+  const 列 = [...按运营商分组(列表).values()];
   const 结果 = [];
   const 最大 = Math.max(0, ...列.map(项 => 项.length));
   for (let 索引 = 0; 索引 < 最大; 索引++) {
     for (const 节点列 of 列) if (节点列[索引]) 结果.push(节点列[索引]);
+  }
+  return 结果;
+}
+
+export function 按主力填充(列表) {
+  const 队列 = new Map([...按运营商分组(列表)].map(([名, 节点列]) => [名, 节点列.slice()]));
+  const 结果 = [];
+  for (;;) {
+    let 有 = false;
+    for (const 名 of 主力节拍) {
+      const 列 = 队列.get(名);
+      if (!列 || !列.length) continue;
+      结果.push(列.shift());
+      有 = true;
+    }
+    if (!有) break;
   }
   return 结果;
 }
@@ -830,7 +959,7 @@ export function 编排优选节点(列表, 选项, 现在 = Date.now()) {
   const 保底 = 按运营商交错(筛选.filter(节点 => 节点.tier === 0 && 节点.kind !== 'domain'));
   const 入口 = 筛选.filter(节点 => 节点.isp === '入口');
   const 域名 = 筛选.filter(节点 => 节点.kind === 'domain' && 节点.isp !== '入口');
-  const 四版 = 按运营商交错(筛选.filter(节点 => 节点.kind === 'v4' && 节点.tier !== 0));
+  const 四版 = 按主力填充(筛选.filter(节点 => 节点.kind === 'v4' && 节点.tier !== 0));
   const 六版 = 筛选.filter(节点 => 节点.kind === 'v6').sort(比较优选);
   const 保底序 = 选项.balance ? 轮换序列(保底, 现在, Math.min(8, 保底.length), 300000) : 保底;
   const 四版序 = 选项.balance ? 轮换序列(四版, 现在, Math.min(8, 四版.length), 300000) : 四版;

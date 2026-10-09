@@ -112,7 +112,7 @@ function 读取当前线路选项() {
 
 function 线路缓存键(选项, 自定义摘要) {
   return [
-    'mix3',
+    'ctcm4',
     选项.region,
     选项.mobile ? 1 : 0,
     选项.unicom ? 1 : 0,
@@ -411,25 +411,41 @@ function 标成社区节点(列表, 是中转 = false) {
   });
 }
 
+function 运营商仍启用(名称, 选项) {
+  if (名称 === '移动') return !!选项.mobile;
+  if (名称 === '联通') return !!选项.unicom;
+  if (名称 === '电信') return !!选项.telecom;
+  return true;
+}
+
 async function 拉取远程优选(选项) {
   const 任务 = [];
   if (启用优选地址) {
-    任务.push(() => 拉取并解析(实测优选源[0], { tier: 1, fallbackName: '优选IP', prefer: 'isp', maxLines: 80 }).then(列表 => 标成社区节点(列表.sort(比较优选).slice(0, 40))));
-    任务.push(() => 拉取并解析(实测优选源[1], { tier: 1, fallbackName: '优选IP', prefer: 'isp', maxLines: 60 }).then(列表 => 标成社区节点(列表.sort(比较优选).slice(0, 24))));
-    if (选项.telecom) {
-      for (const 来源 of 电信优选源) {
-        任务.push(() => 拉取并解析(来源.url, {
-          tier: 来源.relay ? 2 : 1,
-          fallbackName: 来源.relay ? '电信中转' : '优选IP',
-          prefer: 来源.relay ? 'region' : 'isp',
-          maxLines: 来源.maxLines
-        }).then(列表 => 整理电信优选节点(列表, 来源)));
-      }
+    for (const 来源 of 主力优选源) {
+      const 运营商列 = (来源.isps || []).filter(名称 => 运营商仍启用(名称, 选项));
+      if (!运营商列.length) continue;
+      任务.push(() => 拉取并解析(来源.url, {
+        tier: 来源.relay ? 2 : 1,
+        fallbackName: 来源.relay ? '优选中转' : '优选IP',
+        prefer: 来源.relay ? 'region' : 'isp',
+        maxLines: 来源.maxLines
+      }).then(列表 => {
+        const 输出 = [];
+        for (const 运营商 of 运营商列) {
+          输出.push(...整理运营商优选节点(列表, {
+            isp: 运营商,
+            taggedOnly: 来源.taggedOnly,
+            relay: 来源.relay,
+            limit: (来源.limits && 来源.limits[运营商]) || 6
+          }));
+        }
+        return 输出;
+      }));
     }
     任务.push(() => 拉取并解析(优选域名源, { tier: 4, fallbackName: '优选域名', prefer: 'isp', maxLines: 80 }).then(列表 => 列表.filter(项 => 项.kind === 'domain').slice(0, 4)));
     const 地区网址 = 选项.pool.length ? 选项.pool : (选项.region === 'all' ? 内置地区代码 : [选项.region]).map(内置地区源).filter(Boolean);
     for (const 网址 of 地区网址) {
-      任务.push(() => 拉取并解析(网址, { tier: 2, fallbackName: '中转', prefer: 'region', maxLines: 20 }).then(列表 => 标成社区节点(列表.slice(0, 6), true)));
+      任务.push(() => 拉取并解析(网址, { tier: 2, fallbackName: '中转', prefer: 'region', maxLines: 20 }).then(列表 => 标成社区节点(列表.slice(0, 3), true)));
     }
     if (选项.v6policy !== 'off' && 选项.ipv6) {
       任务.push(() => 拉取并解析(六版优选源, { tier: 3, fallbackName: 'IPv6优选', prefer: 'isp', maxLines: 30 }).then(列表 => 标成社区节点(列表.filter(项 => 项.kind === 'v6').slice(0, 8))));

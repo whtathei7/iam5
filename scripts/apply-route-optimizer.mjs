@@ -149,7 +149,7 @@ const 面板 = `                        <div style="margin-bottom: 15px;">
                                         <span>自定义节点合并默认池</span>
                                     </label>
                                 </div>
-                                <div class="opt-note" style="font-size: 13px; line-height: 1.6; margin-bottom: 10px;">各运营商单独保留，并附带地区中转与 8443。</div>
+                                <div class="opt-note" style="font-size: 13px; line-height: 1.6; margin-bottom: 10px;">电信、移动优质节点优先，订阅里可以选择自动最快。联通、地区中转和 8443 仍会保留。</div>
                                 <div style="display: flex; flex-wrap: wrap; gap: 12px;">
                                     <div style="min-width: 120px; flex: 1;">
                                         <label style="display: block; margin-bottom: 6px; color: #00f0ff;">下发数量</label>
@@ -338,10 +338,13 @@ const 面板 = `                        <div style="margin-bottom: 15px;">
   `  const 低延迟组名 = '⚡ 电信低延迟';
   const 大带宽组名 = '🚄 电信大带宽';
   const Codex智能组名 = '🧠 Codex智能';
+  const 自动选择组名 = '⚡ 自动选择';
   const Codex测试网址 = 'https://chatgpt.com/cdn-cgi/trace';
+  const 自动测速网址 = 'https://www.gstatic.com/generate_204';
   const 电信节点 = 节点列表586.filter(节点 => /电信/.test(节点.name || ''));
   const 低延迟节点 = 挑选自动测速节点(电信节点.length ? 电信节点 : 节点列表586, 8);
   const Codex候选节点 = 挑选自动测速节点(节点列表586, 12);
+  const 自动选择节点 = 挑选自动最快节点(节点列表586, 8);
   const 高速节点 = 节点列表586.filter(节点 => /高速\\d+·.*电信/.test(节点.name || '')).sort((甲, 乙) => {
     const 甲序 = Number((甲.name.match(/高速(\\d+)·/) || [])[1]) || 999;
     const 乙序 = Number((乙.name.match(/高速(\\d+)·/) || [])[1]) || 999;
@@ -349,6 +352,17 @@ const 面板 = `                        <div style="margin-bottom: 15px;">
   });
   const 大带宽节点 = 挑选自动测速节点(高速节点.length ? 高速节点 : 低延迟节点, 6);
   const 列出测速节点 = 列表 => 列表.length ? 列表.map(节点 => \`      - \${处理本地值622(节点.name)}\`).join('\\n') : '      - DIRECT';
+  const 自动选择组 = [
+    '  - name: "' + 自动选择组名 + '"',
+    '    type: url-test',
+    '    url: ' + 自动测速网址,
+    '    expected-status: 204',
+    '    interval: 600',
+    '    tolerance: 50',
+    '    lazy: true',
+    '    proxies:',
+    列出测速节点(自动选择节点)
+  ].join('\\n');
   const 低延迟组 = [
     '  - name: "' + 低延迟组名 + '"',
     '    type: url-test',
@@ -385,11 +399,74 @@ const 面板 = `                        <div style="margin-bottom: 15px;">
     '      - "' + Codex智能组名 + '"',
     '      - "' + 大带宽组名 + '"',
     '      - "' + 低延迟组名 + '"',
+    '      - "' + 自动选择组名 + '"',
     '      - "🚀 节点选择"',
     '      - "🎯 全球直连"',
     节点仅
   ].join('\\n');
-  const 值值577 = [解码64('cHJveHktZ3JvdXBzOg=='), Codex智能组, 大带宽组, 低延迟组, '  - name: "🚀 节点选择"', '    type: select', '    proxies:', '      - "' + Codex智能组名 + '"', '      - "' + 大带宽组名 + '"', '      - "' + 低延迟组名 + '"', '      - "🎯 全球直连"', 节点仅,`
+  const 值值577 = [解码64('cHJveHktZ3JvdXBzOg=='), 自动选择组, Codex智能组, 大带宽组, 低延迟组, '  - name: "🚀 节点选择"', '    type: select', '    proxies:', '      - "' + 自动选择组名 + '"', '      - "' + Codex智能组名 + '"', '      - "' + 大带宽组名 + '"', '      - "' + 低延迟组名 + '"', '      - "🎯 全球直连"', 节点仅,`
+);
+
+写入(
+  'surge-auto-fastest',
+  '  行列表555.push(`🚀 节点选择 = select, 🎯 全球直连, ${列表553}`);',
+  `  const 自动选择名 = '⚡ 自动选择';
+  const 自动候选 = 挑选自动最快节点(节点列表560.map(项 => ({ name: 项.name, server: 项.server, port: 项.port, sni: 项.sni })), 8);
+  const 自动名单 = 自动候选.length ? 自动候选.map(项 => 项.name).join(', ') : (名称列表557[0] || 'DIRECT');
+  行列表555.push(\`\${自动选择名} = url-test, \${自动名单}, url=http://www.gstatic.com/generate_204, interval=600, tolerance=50, timeout=5\`);
+  行列表555.push(\`🚀 节点选择 = select, \${自动选择名}, 🎯 全球直连, \${列表553}\`);`
+);
+
+写入(
+  'loon-auto-fastest',
+  '  行列表546.push(`🚀 节点选择 = select,🎯 全球直连,${列表542}`);',
+  `  const 自动选择名 = '⚡ 自动选择';
+  const 自动候选 = 挑选自动最快节点(节点列表550.map(项 => ({ name: 项.name, server: 项.server, port: 项.port, sni: 项.sni })), 8);
+  const 自动名单 = 自动候选.length ? 自动候选.map(项 => 项.name).join(',') : (名称列表548[0] || 'DIRECT');
+  行列表546.push(\`\${自动选择名} = url-test,\${自动名单},url=http://www.gstatic.com/generate_204,interval=600,tolerance=50\`);
+  行列表546.push(\`🚀 节点选择 = select,\${自动选择名},🎯 全球直连,\${列表542}\`);`
+);
+
+写入(
+  'qx-auto-fastest',
+  '  行列表538.push(`static=🚀 节点选择, ${列表534}, direct, img-url=${解码64(\'aHR0cHM6Ly9mYXN0bHkuanNkZWxpdnIubmV0L2doL0tvb2xzb24vUXVyZUBtYXN0ZXIvSWNvblNldC9Db2xvci9Qcm94eS5wbmc=\')}`);',
+  `  const 自动选择名 = '⚡ 自动选择';
+  const 自动候选 = 挑选自动最快节点(节点列表.map(项 => ({ name: 项.name, server: 项.server, port: 项.port, sni: 项.sni })), 8);
+  const 自动名单 = 自动候选.length ? 自动候选.map(项 => 项.name).join(', ') : 'direct';
+  行列表538.push(\`url-latency-benchmark=\${自动选择名}, \${自动名单}, check-interval=600, tolerance=50, img-url=https://fastly.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Auto.png\`);
+  行列表538.push(\`static=🚀 节点选择, \${自动选择名}, \${列表534}, direct, img-url=\${解码64('aHR0cHM6Ly9mYXN0bHkuanNkZWxpdnIubmV0L2doL0tvb2xzb24vUXVyZUBtYXN0ZXIvSWNvblNldC9Db2xvci9Qcm94eS5wbmc=')}\`);`
+);
+
+写入(
+  'singbox-auto-candidates',
+  '  const 出站值 = 节点列表572.map(数量值569 => 数量值569.name);',
+  `  const 出站值 = 节点列表572.map(数量值569 => 数量值569.name);
+  const 自动选择候选 = 挑选自动最快节点(节点列表572.map(项 => ({ name: 项.name, server: 项.server, port: 项.port, sni: 项.sni })), 8).map(项 => 项.name);
+  const 自动选择出站 = 自动选择候选.length ? 自动选择候选 : 出站值.slice(0, 8);`
+);
+
+写入(
+  'singbox-auto-fastest',
+  `    outbounds: [{
+      type: 'selector',
+      tag: 'select',
+      outbounds: ['direct', ...出站值],
+      default: 出站值[0] || 'direct'
+    }, {`,
+  `    outbounds: [{
+      type: 'urltest',
+      tag: '⚡ 自动选择',
+      outbounds: 自动选择出站.length ? 自动选择出站 : ['direct'],
+      url: 'https://www.gstatic.com/generate_204',
+      interval: '10m',
+      tolerance: 50,
+      idle_timeout: '30m'
+    }, {
+      type: 'selector',
+      tag: 'select',
+      outbounds: ['⚡ 自动选择', 'direct', ...出站值],
+      default: '⚡ 自动选择'
+    }, {`
 );
 
 写入(
