@@ -500,11 +500,11 @@ export function 应用握手结果(列表, 探测, 选项, 严格 = false) {
       continue;
     }
     if (结果.status === 'ok') {
-      留下.push({ ...节点, port: 结果.port || 节点.port || 443, alive: true });
+      留下.push({ ...节点, port: 结果.port || 节点.port || 443, alive: true, edgeStatus: 'ok' });
       continue;
     }
     if (节点.tier === 5) continue;
-    if (社区节点(节点)) 留下.push(节点);
+    if (社区节点(节点)) 留下.push({ ...节点, alive: false, edgeStatus: 结果.status || 'failed' });
   }
   const 节点 = 合并去重(留下);
   return { nodes: 节点, effective: 节点.some(项 => 项.kind !== 'domain' && (项.alive || 社区节点(项))) };
@@ -771,8 +771,26 @@ export function 短哈希(文本) {
   return (值 >>> 0).toString(16);
 }
 
+export function 生成抗阻断路径(节点, 用户 = '') {
+  const 标识 = 节点 && (节点.ip || 节点.domain || 节点.server) || '';
+  const 端口 = 节点 && 节点.port || 443;
+  const 前置域名 = 节点 && 节点.frontDomain || '';
+  return `/assets/${短哈希(`${用户}|${标识}|${端口}|${前置域名}`)}?ed=2048`;
+}
+
+export function 分配前置域名(列表, 入口域名, 备用域名 = []) {
+  const 域名 = [入口域名, ...(备用域名 || [])]
+    .map(项 => String(项 || '').trim().toLowerCase())
+    .filter((项, 索引, 全部) => 项 && 全部.indexOf(项) === 索引);
+  if (域名.length <= 1) return (列表 || []).map(节点 => ({ ...节点, frontDomain: 域名[0] || '' }));
+  return (列表 || []).map((节点, 索引) => ({
+    ...节点,
+    frontDomain: 域名[索引 % 域名.length]
+  }));
+}
+
 export function 压缩节点(节点) {
-  return [节点.ip, 节点.port || 443, 节点.isp || '', 节点.tier || 0, 节点.kind || 'v4', 节点.latency == null ? null : 节点.latency, 节点.speed || 0, 节点.region || '', 节点.relay ? 1 : 0, 节点.sourced ? 1 : 0];
+  return [节点.ip, 节点.port || 443, 节点.isp || '', 节点.tier || 0, 节点.kind || 'v4', 节点.latency == null ? null : 节点.latency, 节点.speed || 0, 节点.region || '', 节点.relay ? 1 : 0, 节点.sourced ? 1 : 0, 节点.edgeStatus || (节点.alive ? 'ok' : '')];
 }
 
 export function 展开节点(项) {
@@ -789,7 +807,9 @@ export function 展开节点(项) {
       speed: 项.speed || 0,
       region: 项.region || '',
       relay: !!项.relay,
-      sourced: !!项.sourced
+      sourced: !!项.sourced,
+      alive: 项.edgeStatus === 'ok' || !!项.alive,
+      edgeStatus: 项.edgeStatus || (项.alive ? 'ok' : '')
     };
   }
   if (!项[0]) return null;
@@ -803,7 +823,9 @@ export function 展开节点(项) {
     speed: 项[6] || 0,
     region: 项[7] || '',
     relay: !!项[8],
-    sourced: !!项[9]
+    sourced: !!项[9],
+    alive: 项[10] === 'ok',
+    edgeStatus: 项[10] || ''
   };
 }
 

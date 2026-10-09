@@ -29,6 +29,8 @@ import {
   保留可用速度,
   标注保底,
   扩展备用端口,
+  生成抗阻断路径,
+  分配前置域名,
   是公网地址,
   社区节点,
   允许访问,
@@ -131,6 +133,12 @@ test('移动和中转不会被电信挤掉，Worker 握手失败也不丢掉实�
   assert.equal(留下.some(项 => 项.ip === '104.26.0.79'), true);
   const 备用 = 扩展备用端口([{ ip: '104.18.32.73', port: 443, isp: '电信', tier: 1, kind: 'v4', latency: 44, speed: 68, region: '' }]);
   assert.equal(备用.some(项 => 项.port === 8443), true);
+  const 路径甲 = 生成抗阻断路径({ ip: '104.18.32.73', port: 443 }, 'test-user');
+  const 路径乙 = 生成抗阻断路径({ ip: '104.18.32.74', port: 443 }, 'test-user');
+  assert.match(路径甲, /^\/assets\/[0-9a-f]+\?ed=2048$/);
+  assert.notEqual(路径甲, 路径乙);
+  const 前置 = 分配前置域名([{ ip: '1.1.1.1' }, { ip: '1.0.0.1' }, { ip: '8.8.8.8' }], 'main.example.com', ['alt.example.com']);
+  assert.deepEqual(前置.map(项 => 项.frontDomain), ['main.example.com', 'alt.example.com', 'main.example.com']);
 });
 
 test('私网地址不能下发，社区中转可以，电信再快也留移动节点', () => {
@@ -269,13 +277,21 @@ test('订阅请求会走优选、保底前置和缓存', async () => {
   const 正文1 = Buffer.from(await 第一次.text(), 'base64').toString('utf8');
   const 行1 = 正文1.split('\n').filter(Boolean);
   assert.ok(行1.length >= 8 && 行1.length <= 36, `节点数量异常: ${行1.length} ${摘要1}`);
-  assert.match(摘要1, /alive=\d+/);
+  assert.equal(行1.every(行 => 行.includes('ech=')), true);
+  assert.ok(new Set(行1.map(行 => new URL(行).searchParams.get('path'))).size > 1);
+  assert.match(摘要1, /selected=\d+/);
+  assert.match(摘要1, /edge_ok=\d+;edge_tested=\d+;user_ok=unknown/);
   assert.match(decodeURIComponent(行1[0]), /保底|移动|联通|电信|香港|台湾|日本/);
   assert.equal(行1.some(行 => /@(?:10\.|127\.|192\.168\.|0\.0\.0\.0)/.test(行)), false);
   assert.equal(行1.some(行 => 行.includes('[')), false);
-  assert.match(摘要1, /alive=[1-9]/);
+  assert.doesNotMatch(摘要1, /(?:^|;)alive=/);
   const 第二次 = await 请求订阅();
   assert.match(第二次.headers.get('X-Opt') || '', /cache=fresh/);
+  const Clash配置 = await 工人.default.fetch(new Request(`https://example.com/${令牌}/sub?target=clash`), { u: 令牌 }, { waitUntil() {} });
+  const Clash正文 = await Clash配置.text();
+  assert.match(Clash配置.headers.get('content-type') || '', /text\/yaml/);
+  assert.match(Clash正文, /ech-opts:\s*\n\s+enable: true/);
+  assert.match(Clash正文, /path: "?\/assets\/[0-9a-f]+\?ed=2048"?/);
   const 自定义 = await 工人.default.fetch(new Request(`https://example.com/${令牌}/sub`), {
     u: 令牌,
     yx: '1.2.3.4:443#自定甲,5.6.7.8:443#自定乙'

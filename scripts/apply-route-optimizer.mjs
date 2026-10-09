@@ -7,7 +7,7 @@ const 目标 = path.join(根目录, '_worker.js');
 const 核心 = fs.readFileSync(path.join(根目录, 'src/route-optimizer-core.mjs'), 'utf8');
 const 胶水 = fs.readFileSync(path.join(根目录, 'src/route-optimizer-glue.js'), 'utf8');
 const 后台样式 = fs.readFileSync(path.join(根目录, 'src/admin-calm.css'), 'utf8');
-let 源 = fs.readFileSync(目标, 'utf8');
+let 源 = fs.readFileSync(目标, 'utf8').replace(/\r\n/g, '\n');
 
 function 包裹(名称, 内容) {
   return `/* ROUTE_OPT_START ${名称} */\n${内容.replace(/^\n/, '').replace(/\n$/, '')}\n/* ROUTE_OPT_END ${名称} */`;
@@ -208,6 +208,25 @@ const 面板 = `                        <div style="margin-bottom: 15px;">
 );
 
 写入(
+  'ech-runtime-default',
+  'let 启用加密客户端问候 = false;',
+  'let 启用加密客户端问候 = true;'
+);
+
+写入(
+  'ech-config-default',
+  "  ech: 'no',",
+  "  ech: 'yes',"
+);
+
+写入(
+  'ech-fetch-default',
+  "      启用加密客户端问候 = 获取配置开关值('ech', false, 本地值734.ech || 本地值734.ECH);",
+  `      const 强制ECH = !/^(no|false|0|off)$/i.test(String(本地值734.ECH_REQUIRED ?? 本地值734.echRequired ?? 'yes'));
+      启用加密客户端问候 = 强制ECH || 获取配置开关值('ech', true, 本地值734.ech || 本地值734.ECH);`
+);
+
+写入(
   'normalize',
   `  if (快照.ev === 'no' && 快照.et === 'no' && 快照.ex === 'no') {
     快照.ev = 'yes';
@@ -284,6 +303,94 @@ const 面板 = `                        <div style="margin-bottom: 15px;">
   `  if (线路优化摘要) 响应头部列表['X-Opt'] = 线路优化摘要;
   return new Response(订阅内容, {
 `
+);
+
+写入(
+  'vless-source-server',
+  "    const 安全地址467 = 项目468.ip.includes(':') ? `[${项目468.ip}]` : 项目468.ip;",
+  `    const 服务器468 = 项目468.kind === 'domain' && 项目468.frontDomain ? 项目468.frontDomain : 项目468.ip;
+    const 安全地址467 = 服务器468.includes(':') ? \`[\${服务器468}]\` : 服务器468;`
+);
+
+写入(
+  'vless-source-front',
+  `          sni: 工作器域名480,
+          // randomized fingerprint may cause TLS compatibility issues with some Xray/uTLS clients.
+          // Use chrome as default for better compatibility (chrome is also required when ECH is enabled).
+          fp: 'chrome',
+          type: 'ws',
+          host: 工作器域名480,
+          path: 网页套接字路径471`,
+  `          sni: 项目468.frontDomain || 工作器域名480,
+          // randomized fingerprint may cause TLS compatibility issues with some Xray/uTLS clients.
+          // Use chrome as default for better compatibility (chrome is also required when ECH is enabled).
+          fp: 'chrome',
+          type: 'ws',
+          host: 项目468.frontDomain || 工作器域名480,
+          path: 生成抗阻断路径(项目468, 用户481)`
+);
+
+写入(
+  'trojan-source-server',
+  "    const 安全地址442 = 项目443.ip.includes(':') ? `[${项目443.ip}]` : 项目443.ip;",
+  `    const 服务器443 = 项目443.kind === 'domain' && 项目443.frontDomain ? 项目443.frontDomain : 项目443.ip;
+    const 安全地址442 = 服务器443.includes(':') ? \`[\${服务器443}]\` : 服务器443;`
+);
+
+写入(
+  'trojan-source-front',
+  `          sni: 工作器域名453,
+          fp: 'chrome',
+          type: 'ws',
+          host: 工作器域名453,
+          path: 网页套接字路径446`,
+  `          sni: 项目443.frontDomain || 工作器域名453,
+          fp: 'chrome',
+          type: 'ws',
+          host: 项目443.frontDomain || 工作器域名453,
+          path: 生成抗阻断路径(项目443, 用户454)`
+);
+
+写入(
+  'vless-new-server',
+  "    const 安全地址87 = 项目89.ip.includes(':') ? `[${项目89.ip}]` : 项目89.ip;",
+  `    const 服务器89 = 项目89.kind === 'domain' && 项目89.frontDomain ? 项目89.frontDomain : 项目89.ip;
+    const 安全地址87 = 服务器89.includes(':') ? \`[\${服务器89}]\` : 服务器89;
+    const 节点前置域名89 = 项目89.frontDomain || 工作器域名98;
+    const 节点网页套接字路径89 = 生成抗阻断路径(项目89, 用户99);`
+);
+
+写入(
+  'vless-new-front-safe-port',
+  "      let 链接85 = `${协议}://${用户99}@${安全地址87}:${端口88}?encryption=none&security=tls&sni=${工作器域名98}&fp=chrome&type=ws&host=${工作器域名98}&path=${网页套接字路径91}`;",
+  "      let 链接85 = `${协议}://${用户99}@${安全地址87}:${端口88}?encryption=none&security=tls&sni=${节点前置域名89}&fp=chrome&type=ws&host=${节点前置域名89}&path=${节点网页套接字路径89}`;"
+);
+
+写入(
+  'vless-new-front-other-port',
+  "      let 链接79 = `${协议}://${用户99}@${安全地址87}:${端口88}?encryption=none&security=tls&sni=${工作器域名98}&fp=chrome&type=ws&host=${工作器域名98}&path=${网页套接字路径91}`;",
+  "      let 链接79 = `${协议}://${用户99}@${安全地址87}:${端口88}?encryption=none&security=tls&sni=${节点前置域名89}&fp=chrome&type=ws&host=${节点前置域名89}&path=${节点网页套接字路径89}`;"
+);
+
+写入(
+  'trojan-new-server',
+  "    const 安全地址 = 项目62.ip.includes(':') ? `[${项目62.ip}]` : 项目62.ip;",
+  `    const 服务器62 = 项目62.kind === 'domain' && 项目62.frontDomain ? 项目62.frontDomain : 项目62.ip;
+    const 安全地址 = 服务器62.includes(':') ? \`[\${服务器62}]\` : 服务器62;
+    const 节点前置域名62 = 项目62.frontDomain || 工作器域名;
+    const 节点网页套接字路径62 = 生成抗阻断路径(项目62, 用户);`
+);
+
+写入(
+  'trojan-new-front-safe-port',
+  "      let 链接59 = `${atob('dHJvamFuOi8v')}${密码}@${安全地址}:${端口61}?security=tls&sni=${工作器域名}&fp=chrome&type=ws&host=${工作器域名}&path=${网页套接字路径}`;",
+  "      let 链接59 = `${atob('dHJvamFuOi8v')}${密码}@${安全地址}:${端口61}?security=tls&sni=${节点前置域名62}&fp=chrome&type=ws&host=${节点前置域名62}&path=${节点网页套接字路径62}`;"
+);
+
+写入(
+  'trojan-new-front-other-port',
+  "      let 链接 = `${atob('dHJvamFuOi8v')}${密码}@${安全地址}:${端口61}?security=tls&sni=${工作器域名}&fp=chrome&type=ws&host=${工作器域名}&path=${网页套接字路径}`;",
+  "      let 链接 = `${atob('dHJvamFuOi8v')}${密码}@${安全地址}:${端口61}?security=tls&sni=${节点前置域名62}&fp=chrome&type=ws&host=${节点前置域名62}&path=${节点网页套接字路径62}`;"
 );
 
 处理订阅钩子();
