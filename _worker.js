@@ -2248,15 +2248,17 @@ function 生成值值589(链接列表588, 本地值587 = {}) {
   const 节点仅 = 名称列表584.length ? 名称列表584.map(数量值578 => `      - ${处理本地值622(数量值578)}`).join('\n') : '      - DIRECT';
 /* ROUTE_OPT_START clash-auto-fastest */
   const 自动测速组名 = '♻️ 自动选择';
+  const 自动测速节点 = 挑选自动测速节点(节点列表586, 12);
+  const 自动测速仅 = 自动测速节点.length ? 自动测速节点.map(节点 => `      - ${处理本地值622(节点.name)}`).join('\n') : '      - DIRECT';
   const 自动测速组 = [
     '  - name: "' + 自动测速组名 + '"',
     '    type: url-test',
     '    url: http://www.gstatic.com/generate_204',
-    '    interval: 300',
+    '    interval: 600',
     '    tolerance: 50',
     '    lazy: true',
     '    proxies:',
-    节点仅
+    自动测速仅
   ].join('\n');
   const 值值577 = [解码64('cHJveHktZ3JvdXBzOg=='), 自动测速组, '  - name: "🚀 节点选择"', '    type: select', '    proxies:', '      - "' + 自动测速组名 + '"', '      - "🎯 全球直连"', 节点仅,
 /* ROUTE_OPT_END clash-auto-fastest */ '  - name: "🌍 国外媒体"', '    type: select', '    proxies:', 处理值选择值(名称列表584), '  - name: "📺 哔哩哔哩"', '    type: select', '    proxies:', 处理值选择值(名称列表584, {
@@ -3340,6 +3342,30 @@ export function 是安全优选网址(值) {
   }
 }
 
+export function 解析独立入口配置(值, 当前域名 = '') {
+  const 当前 = String(当前域名 || '').trim().toLowerCase();
+  const 唯一标识 = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  const 结果 = [];
+  const 已见 = new Set();
+  for (const 原项 of String(值 || '').split(/[\n,;]+/)) {
+    const 文本 = 原项.trim();
+    if (!文本) continue;
+    try {
+      const 网址 = new URL(文本);
+      const 域名 = 网址.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+      const 用户 = decodeURIComponent(网址.pathname.split('/').filter(Boolean)[0] || '').toLowerCase();
+      if (网址.protocol !== 'https:' || 地址种类(域名) !== 'domain' || 域名 === 当前 || !唯一标识.test(用户)) continue;
+      const 键 = `${域名}|${用户}`;
+      if (已见.has(键)) continue;
+      已见.add(键);
+      const 标签 = decodeURIComponent(网址.hash.slice(1)).replace(/[\r\n|]/g, '').trim().slice(0, 24);
+      结果.push({ domain: 域名, uuid: 用户, name: 标签 || `独立入口${结果.length + 1}` });
+      if (结果.length >= 2) break;
+    } catch (错误) {}
+  }
+  return 结果;
+}
+
 export function 整理兜底池(值) {
   return String(值 || '')
     .split(/[\n,;]+/)
@@ -3546,7 +3572,7 @@ export function 解析优选行(行, 配置 = {}) {
   const 地区 = 识别地区(备注);
   const 线路 = 识别线路(备注);
   const 延迟匹配 = 备注.match(/(\d+(?:\.\d+)?)\s*ms/i);
-  const 速度匹配 = 备注.match(/(\d+(?:\.\d+)?)\s*mb(?:ps|\/s)/i);
+  const 速度匹配 = 备注.match(/(\d+(?:\.\d+)?)\s*(?:mb(?:ps|\/s)|m(?=\s|\]|\)|$))/i);
   const 偏向地区 = 配置.prefer === 'region';
   const 名称 = (偏向地区 ? (地区 && 地区.名) || 线路 : 线路 || (地区 && 地区.名)) || 配置.fallbackName || '优选IP';
   return {
@@ -3599,6 +3625,32 @@ export function 整理电信优选节点(列表, 配置 = {}) {
     })
     .sort(比较优选)
     .slice(0, 上限);
+}
+
+export function 挑选自动测速节点(列表, 数量 = 12) {
+  const 上限 = Math.max(1, Math.min(24, Number(数量) || 12));
+  const 分组 = new Map();
+  for (const 节点 of 列表 || []) {
+    if (!节点 || !节点.name) continue;
+    const 键 = String(节点.sni || 节点.host || 节点.server || 'default').toLowerCase();
+    if (!分组.has(键)) 分组.set(键, []);
+    分组.get(键).push(节点);
+  }
+  const 组 = [...分组.values()];
+  const 结果 = [];
+  const 已见 = new Set();
+  let 轮次 = 0;
+  while (结果.length < 上限 && 组.some(节点列 => 节点列.length > 轮次)) {
+    for (const 节点列 of 组) {
+      const 节点 = 节点列[轮次];
+      if (!节点 || 已见.has(节点.name)) continue;
+      已见.add(节点.name);
+      结果.push(节点);
+      if (结果.length >= 上限) break;
+    }
+    轮次++;
+  }
+  return 结果;
 }
 
 export function 合并去重(列表) {
@@ -4201,6 +4253,11 @@ function 读取备用前置域名() {
   }).filter((项, 索引, 全部) => 全部.indexOf(项) === 索引).slice(0, 8);
 }
 
+function 读取独立入口(当前域名) {
+  const 原文 = 当前环境.INDEPENDENT_ENDPOINTS || 当前环境.BACKUP_ENDPOINTS || 当前环境.independentEndpoints || '';
+  return 解析独立入口配置(原文, 当前域名);
+}
+
 function 应用线路优化开关() {
   const 线路 = 整理线路选项(获取有效配置快照(当前环境));
   启用线路优化 = 线路.enabled;
@@ -4333,6 +4390,24 @@ async function 拉取并解析(网址, 配置) {
   const 文本 = await 拉取优选文本(网址);
   if (!文本) return [];
   return 解析优选文本(文本, 配置);
+}
+
+async function 有限并发结算(任务, 并发数 = 5) {
+  const 结果 = Array(任务.length);
+  let 游标 = 0;
+  async function 执行() {
+    while (游标 < 任务.length) {
+      const 索引 = 游标++;
+      try {
+        结果[索引] = { status: 'fulfilled', value: await 任务[索引]() };
+      } catch (reason) {
+        结果[索引] = { status: 'rejected', reason };
+      }
+    }
+  }
+  const 数量 = Math.min(Math.max(1, 并发数), 任务.length);
+  await Promise.all(Array.from({ length: 数量 }, 执行));
+  return 结果;
 }
 
 async function 读到判定(读取器, 超时毫秒) {
@@ -4514,29 +4589,30 @@ function 标成社区节点(列表, 是中转 = false) {
 async function 拉取远程优选(选项) {
   const 任务 = [];
   if (启用优选地址) {
-    任务.push(拉取并解析(实测优选源[0], { tier: 1, fallbackName: '优选IP', prefer: 'isp', maxLines: 80 }).then(列表 => 标成社区节点(列表.sort(比较优选).slice(0, 40))));
-    任务.push(拉取并解析(实测优选源[1], { tier: 1, fallbackName: '优选IP', prefer: 'isp', maxLines: 60 }).then(列表 => 标成社区节点(列表.sort(比较优选).slice(0, 24))));
+    任务.push(() => 拉取并解析(实测优选源[0], { tier: 1, fallbackName: '优选IP', prefer: 'isp', maxLines: 80 }).then(列表 => 标成社区节点(列表.sort(比较优选).slice(0, 40))));
+    任务.push(() => 拉取并解析(实测优选源[1], { tier: 1, fallbackName: '优选IP', prefer: 'isp', maxLines: 60 }).then(列表 => 标成社区节点(列表.sort(比较优选).slice(0, 24))));
     if (选项.telecom) {
       for (const 来源 of 电信优选源) {
-        任务.push(拉取并解析(来源.url, {
+        任务.push(() => 拉取并解析(来源.url, {
           tier: 来源.relay ? 2 : 1,
-          fallbackName: 来源.relay ? '电信中转' : '电信',
+          fallbackName: 来源.relay ? '电信中转' : '优选IP',
           prefer: 来源.relay ? 'region' : 'isp',
           maxLines: 来源.maxLines
         }).then(列表 => 整理电信优选节点(列表, 来源)));
       }
     }
-    任务.push(拉取并解析(优选域名源, { tier: 4, fallbackName: '优选域名', prefer: 'isp', maxLines: 80 }).then(列表 => 列表.filter(项 => 项.kind === 'domain').slice(0, 4)));
+    任务.push(() => 拉取并解析(优选域名源, { tier: 4, fallbackName: '优选域名', prefer: 'isp', maxLines: 80 }).then(列表 => 列表.filter(项 => 项.kind === 'domain').slice(0, 4)));
     const 地区网址 = 选项.pool.length ? 选项.pool : (选项.region === 'all' ? 内置地区代码 : [选项.region]).map(内置地区源).filter(Boolean);
     for (const 网址 of 地区网址) {
-      任务.push(拉取并解析(网址, { tier: 2, fallbackName: '中转', prefer: 'region', maxLines: 20 }).then(列表 => 标成社区节点(列表.slice(0, 6), true)));
+      任务.push(() => 拉取并解析(网址, { tier: 2, fallbackName: '中转', prefer: 'region', maxLines: 20 }).then(列表 => 标成社区节点(列表.slice(0, 6), true)));
     }
     if (选项.v6policy !== 'off' && 选项.ipv6) {
-      任务.push(拉取并解析(六版优选源, { tier: 3, fallbackName: 'IPv6优选', prefer: 'isp', maxLines: 30 }).then(列表 => 标成社区节点(列表.filter(项 => 项.kind === 'v6').slice(0, 8))));
+      任务.push(() => 拉取并解析(六版优选源, { tier: 3, fallbackName: 'IPv6优选', prefer: 'isp', maxLines: 30 }).then(列表 => 标成社区节点(列表.filter(项 => 项.kind === 'v6').slice(0, 8))));
     }
   }
-  if (启用仓库优选 && 优选地址源) 任务.push(读取仓库优选节点().then(列表 => 标成社区节点(列表)));
-  const 结算 = await Promise.allSettled(任务);
+  if (启用仓库优选 && 优选地址源) 任务.push(() => 读取仓库优选节点().then(列表 => 标成社区节点(列表)));
+  // Workers Free 每次请求最多同时等待 6 个外连；保留一个余量给运行时其它请求。
+  const 结算 = await 有限并发结算(任务, 5);
   let 节点 = [];
   for (const 项 of 结算) {
     if (项.status === 'fulfilled' && Array.isArray(项.value)) 节点 = 节点.concat(项.value);
@@ -4712,8 +4788,22 @@ async function 处理订阅请求(请求507, 用户506, 网址505 = null) {
       最终链接列表.push(...生成扩展超文本链接列表来源源(列表498, 用户506, 工作器域名504, 加密客户端问候配置501, false, 别名命名器502));
     }
   }
+/* ROUTE_OPT_START independent-node-builder */
+  async function 添加独立入口节点列表(列表, 独立用户, 独立域名) {
+    if (!列表.length) return;
+    if (启用明文) {
+      最终链接列表.push(...生成链接列表来源源(列表, 独立用户, 独立域名, 加密客户端问候配置501, false, 别名命名器502));
+    }
+    if (启用木马) {
+      最终链接列表.push(...(await 生成木马链接列表来源源(列表, 独立用户, 独立域名, 加密客户端问候配置501, false, 别名命名器502)));
+    }
+    if (启用扩展传输) {
+      最终链接列表.push(...生成扩展超文本链接列表来源源(列表, 独立用户, 独立域名, 加密客户端问候配置501, false, 别名命名器502));
+    }
+  }
   if (启用原生地址) {
     if (当前工作器地区 === 'CUSTOM') {
+/* ROUTE_OPT_END independent-node-builder */
       const 原生列表497 = [{
         ip: 工作器域名504,
         isp: '原生地址'
@@ -4756,6 +4846,17 @@ async function 处理订阅请求(请求507, 用户506, 网址505 = null) {
       const 优化节点 = await 组装线路优化节点();
       if (优化节点.length > 0) {
         await 添加节点列表来源列表(优化节点);
+        const 独立入口 = 读取独立入口(工作器域名504);
+        const 独立候选 = 优化节点.filter(节点 => 节点 && 节点.kind !== 'domain').slice(0, 6);
+        for (const 入口 of 独立入口) {
+          const 入口节点 = 独立候选.map(节点 => ({
+            ...节点,
+            frontDomain: 入口.domain,
+            isp: 入口.name + '·' + (节点.isp || '优选')
+          }));
+          await 添加独立入口节点列表(入口节点, 入口.uuid, 入口.domain);
+        }
+        if (线路优化摘要.startsWith('on;')) 线路优化摘要 += ';backends=' + (独立入口.length + 1);
         已写入优化节点 = true;
       } else {
         线路优化摘要 = 'fallback';

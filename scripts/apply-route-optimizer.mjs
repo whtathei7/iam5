@@ -65,6 +65,17 @@ function 处理订阅钩子() {
       const 优化节点 = await 组装线路优化节点();
       if (优化节点.length > 0) {
         await 添加节点列表来源列表(优化节点);
+        const 独立入口 = 读取独立入口(工作器域名504);
+        const 独立候选 = 优化节点.filter(节点 => 节点 && 节点.kind !== 'domain').slice(0, 6);
+        for (const 入口 of 独立入口) {
+          const 入口节点 = 独立候选.map(节点 => ({
+            ...节点,
+            frontDomain: 入口.domain,
+            isp: 入口.name + '·' + (节点.isp || '优选')
+          }));
+          await 添加独立入口节点列表(入口节点, 入口.uuid, 入口.domain);
+        }
+        if (线路优化摘要.startsWith('on;')) 线路优化摘要 += ';backends=' + (独立入口.length + 1);
         已写入优化节点 = true;
       } else {
         线路优化摘要 = 'fallback';
@@ -325,17 +336,39 @@ const 面板 = `                        <div style="margin-bottom: 15px;">
   'clash-auto-fastest',
   `  const 值值577 = [解码64('cHJveHktZ3JvdXBzOg=='), '  - name: "🚀 节点选择"', '    type: select', '    proxies:', '      - "🎯 全球直连"', 节点仅,`,
   `  const 自动测速组名 = '♻️ 自动选择';
+  const 自动测速节点 = 挑选自动测速节点(节点列表586, 12);
+  const 自动测速仅 = 自动测速节点.length ? 自动测速节点.map(节点 => \`      - \${处理本地值622(节点.name)}\`).join('\\n') : '      - DIRECT';
   const 自动测速组 = [
     '  - name: "' + 自动测速组名 + '"',
     '    type: url-test',
     '    url: http://www.gstatic.com/generate_204',
-    '    interval: 300',
+    '    interval: 600',
     '    tolerance: 50',
     '    lazy: true',
     '    proxies:',
-    节点仅
+    自动测速仅
   ].join('\\n');
   const 值值577 = [解码64('cHJveHktZ3JvdXBzOg=='), 自动测速组, '  - name: "🚀 节点选择"', '    type: select', '    proxies:', '      - "' + 自动测速组名 + '"', '      - "🎯 全球直连"', 节点仅,`
+);
+
+写入(
+  'independent-node-builder',
+  `  if (启用原生地址) {
+    if (当前工作器地区 === 'CUSTOM') {`,
+  `  async function 添加独立入口节点列表(列表, 独立用户, 独立域名) {
+    if (!列表.length) return;
+    if (启用明文) {
+      最终链接列表.push(...生成链接列表来源源(列表, 独立用户, 独立域名, 加密客户端问候配置501, false, 别名命名器502));
+    }
+    if (启用木马) {
+      最终链接列表.push(...(await 生成木马链接列表来源源(列表, 独立用户, 独立域名, 加密客户端问候配置501, false, 别名命名器502)));
+    }
+    if (启用扩展传输) {
+      最终链接列表.push(...生成扩展超文本链接列表来源源(列表, 独立用户, 独立域名, 加密客户端问候配置501, false, 别名命名器502));
+    }
+  }
+  if (启用原生地址) {
+    if (当前工作器地区 === 'CUSTOM') {`
 );
 
 写入(

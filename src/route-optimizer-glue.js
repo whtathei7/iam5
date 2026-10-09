@@ -73,6 +73,11 @@ function 读取备用前置域名() {
   }).filter((项, 索引, 全部) => 全部.indexOf(项) === 索引).slice(0, 8);
 }
 
+function 读取独立入口(当前域名) {
+  const 原文 = 当前环境.INDEPENDENT_ENDPOINTS || 当前环境.BACKUP_ENDPOINTS || 当前环境.independentEndpoints || '';
+  return 解析独立入口配置(原文, 当前域名);
+}
+
 function 应用线路优化开关() {
   const 线路 = 整理线路选项(获取有效配置快照(当前环境));
   启用线路优化 = 线路.enabled;
@@ -205,6 +210,24 @@ async function 拉取并解析(网址, 配置) {
   const 文本 = await 拉取优选文本(网址);
   if (!文本) return [];
   return 解析优选文本(文本, 配置);
+}
+
+async function 有限并发结算(任务, 并发数 = 5) {
+  const 结果 = Array(任务.length);
+  let 游标 = 0;
+  async function 执行() {
+    while (游标 < 任务.length) {
+      const 索引 = 游标++;
+      try {
+        结果[索引] = { status: 'fulfilled', value: await 任务[索引]() };
+      } catch (reason) {
+        结果[索引] = { status: 'rejected', reason };
+      }
+    }
+  }
+  const 数量 = Math.min(Math.max(1, 并发数), 任务.length);
+  await Promise.all(Array.from({ length: 数量 }, 执行));
+  return 结果;
 }
 
 async function 读到判定(读取器, 超时毫秒) {
@@ -386,29 +409,30 @@ function 标成社区节点(列表, 是中转 = false) {
 async function 拉取远程优选(选项) {
   const 任务 = [];
   if (启用优选地址) {
-    任务.push(拉取并解析(实测优选源[0], { tier: 1, fallbackName: '优选IP', prefer: 'isp', maxLines: 80 }).then(列表 => 标成社区节点(列表.sort(比较优选).slice(0, 40))));
-    任务.push(拉取并解析(实测优选源[1], { tier: 1, fallbackName: '优选IP', prefer: 'isp', maxLines: 60 }).then(列表 => 标成社区节点(列表.sort(比较优选).slice(0, 24))));
+    任务.push(() => 拉取并解析(实测优选源[0], { tier: 1, fallbackName: '优选IP', prefer: 'isp', maxLines: 80 }).then(列表 => 标成社区节点(列表.sort(比较优选).slice(0, 40))));
+    任务.push(() => 拉取并解析(实测优选源[1], { tier: 1, fallbackName: '优选IP', prefer: 'isp', maxLines: 60 }).then(列表 => 标成社区节点(列表.sort(比较优选).slice(0, 24))));
     if (选项.telecom) {
       for (const 来源 of 电信优选源) {
-        任务.push(拉取并解析(来源.url, {
+        任务.push(() => 拉取并解析(来源.url, {
           tier: 来源.relay ? 2 : 1,
-          fallbackName: 来源.relay ? '电信中转' : '电信',
+          fallbackName: 来源.relay ? '电信中转' : '优选IP',
           prefer: 来源.relay ? 'region' : 'isp',
           maxLines: 来源.maxLines
         }).then(列表 => 整理电信优选节点(列表, 来源)));
       }
     }
-    任务.push(拉取并解析(优选域名源, { tier: 4, fallbackName: '优选域名', prefer: 'isp', maxLines: 80 }).then(列表 => 列表.filter(项 => 项.kind === 'domain').slice(0, 4)));
+    任务.push(() => 拉取并解析(优选域名源, { tier: 4, fallbackName: '优选域名', prefer: 'isp', maxLines: 80 }).then(列表 => 列表.filter(项 => 项.kind === 'domain').slice(0, 4)));
     const 地区网址 = 选项.pool.length ? 选项.pool : (选项.region === 'all' ? 内置地区代码 : [选项.region]).map(内置地区源).filter(Boolean);
     for (const 网址 of 地区网址) {
-      任务.push(拉取并解析(网址, { tier: 2, fallbackName: '中转', prefer: 'region', maxLines: 20 }).then(列表 => 标成社区节点(列表.slice(0, 6), true)));
+      任务.push(() => 拉取并解析(网址, { tier: 2, fallbackName: '中转', prefer: 'region', maxLines: 20 }).then(列表 => 标成社区节点(列表.slice(0, 6), true)));
     }
     if (选项.v6policy !== 'off' && 选项.ipv6) {
-      任务.push(拉取并解析(六版优选源, { tier: 3, fallbackName: 'IPv6优选', prefer: 'isp', maxLines: 30 }).then(列表 => 标成社区节点(列表.filter(项 => 项.kind === 'v6').slice(0, 8))));
+      任务.push(() => 拉取并解析(六版优选源, { tier: 3, fallbackName: 'IPv6优选', prefer: 'isp', maxLines: 30 }).then(列表 => 标成社区节点(列表.filter(项 => 项.kind === 'v6').slice(0, 8))));
     }
   }
-  if (启用仓库优选 && 优选地址源) 任务.push(读取仓库优选节点().then(列表 => 标成社区节点(列表)));
-  const 结算 = await Promise.allSettled(任务);
+  if (启用仓库优选 && 优选地址源) 任务.push(() => 读取仓库优选节点().then(列表 => 标成社区节点(列表)));
+  // Workers Free 每次请求最多同时等待 6 个外连；保留一个余量给运行时其它请求。
+  const 结算 = await 有限并发结算(任务, 5);
   let 节点 = [];
   for (const 项 of 结算) {
     if (项.status === 'fulfilled' && Array.isArray(项.value)) 节点 = 节点.concat(项.value);
