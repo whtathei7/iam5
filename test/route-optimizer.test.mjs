@@ -69,12 +69,12 @@ test('解析地区行、延迟行和 IPv6，并丢掉网段与网页', () => {
   assert.equal(节点[2].kind, 'v6');
 });
 
-test('BestCF 电信和移动是主力，并允许专线中转公网地址', () => {
+test('BestCF 电信和移动是主力，专线地址不能直接拨号', () => {
   assert.ok(主力优选源.some(来源 => 来源.url === 'https://bestcf.pages.dev/uouin/all.txt' && 来源.isps.includes('电信') && 来源.isps.includes('移动')));
   assert.ok(主力优选源.some(来源 => 来源.url === 'https://bestcf.pages.dev/wetest/ipv4.txt' && 来源.isps.includes('移动')));
   assert.ok(主力优选源.some(来源 => 来源.url === 'https://bestcf.pages.dev/cfyes/ipv4.txt'));
   assert.ok(主力优选源.some(来源 => 来源.url === 'https://bestcf.pages.dev/vvhan/ipv4.txt'));
-  assert.ok(主力优选源.some(来源 => 来源.url.includes('svip-s/cloudflare_ip') && 来源.isps.includes('移动') && 来源.relay));
+  assert.equal(主力优选源.some(来源 => 来源.relay || /svip-s|junzhen|love-ztm/.test(来源.url)), false);
   const 三网 = 解析优选文本([
     '162.159.198.1:443#WeTest优选 | 10-09 18:31 | BestCF.pages.dev',
     '104.19.63.96:443#微测优选 | 电信 | LAX | 104.19.63.96',
@@ -95,7 +95,7 @@ test('BestCF 电信和移动是主力，并允许专线中转公网地址', () =
   assert.equal(中转.length, 2);
   assert.equal(中转[0].isp, '电信中转·香港');
   assert.equal(中转[0].relay, true);
-  assert.equal(可拨号节点(中转[0]), true);
+  assert.equal(可拨号节点(中转[0]), false);
   assert.equal(中转[1].port, 8443);
   const 兆数 = 解析优选文本('43.129.217.38:443#CN [高速 by Jz 20M]', { tier: 2, prefer: 'region' });
   assert.equal(兆数[0].speed, 20);
@@ -219,7 +219,7 @@ test('头部轮换只换前排，不把保底换出列表', () => {
   assert.deepEqual(乙.map(项 => 项.ip), ['10.0.0.2', '10.0.0.3', '10.0.0.1']);
 });
 
-test('移动和中转不会被电信挤掉，Worker 握手失败也不丢掉实测地址', () => {
+test('移动不会被电信挤掉，握手失败的地址不再下发', () => {
   const 列表 = [
     { ip: '104.16.1.1', port: 443, isp: '电信', tier: 1, kind: 'v4', latency: 40, speed: 20, region: '', sourced: true },
     { ip: '104.16.1.2', port: 443, isp: '电信', tier: 1, kind: 'v4', latency: 50, speed: 10, region: '', sourced: true },
@@ -232,14 +232,17 @@ test('移动和中转不会被电信挤掉，Worker 握手失败也不丢掉实�
   const 样本 = 挑选测活样本(列表, 2);
   assert.deepEqual(样本.map(项 => 项.ip), ['104.16.1.3', '104.17.1.9']);
   const 全灭 = 应用握手结果(列表, 列表.filter(节点 => 节点.kind !== 'domain').map(节点 => ({ key: 节点键(节点), status: 'timeout', port: 节点.port })), 选项);
-  assert.equal(全灭.effective, true);
-  assert.deepEqual(全灭.nodes.map(项 => 项.ip), ['104.16.1.1', '104.16.1.2', '104.16.1.3', '104.17.1.9', '68.64.183.37', 'example.com']);
+  assert.equal(全灭.effective, false);
+  assert.deepEqual(全灭.nodes.map(项 => 项.ip), ['example.com']);
+  const 测通 = 应用握手结果(列表, [{ key: 节点键(列表[3]), status: 'ok', port: 443 }], 选项);
+  assert.deepEqual(测通.nodes.map(项 => 项.ip), ['104.17.1.9', 'example.com']);
+  assert.equal(测通.nodes[0].alive, true);
   assert.equal(社区节点(列表[4]), true);
   assert.equal(社区节点(列表[5]), false);
   const 电信 = Array.from({ length: 8 }, (_, 序) => ({ ip: `104.18.2.${序 + 1}`, port: 443, isp: '电信', tier: 1, kind: 'v4', latency: 40, speed: 20, region: '' }));
   const 保留 = 保留可用速度(电信.concat([列表[3], 列表[4]]), 4);
   assert.equal(保留.some(项 => 项.isp === '移动'), true);
-  assert.equal(保留.some(项 => 项.relay), true);
+  assert.equal(保留.some(项 => 项.relay), false);
   const 联通实测 = { ip: '104.26.0.79', port: 443, isp: '联通', tier: 1, kind: 'v4', latency: 68, speed: 0.1, region: '' };
   const 同地址 = { ip: '198.41.208.168', port: 443, isp: '联通', tier: 1, kind: 'v4', latency: null, speed: 0, region: '' };
   const 留下 = 保留可用速度([联通实测, 同地址], 4);
@@ -262,7 +265,7 @@ test('可以从 HTTPS DNS 回答中提取静态 ECHConfig', () => {
   assert.equal(提取ECH配置({ Answer: [{ type: 1, data: '1.1.1.1' }] }), '');
 });
 
-test('私网地址不能下发，社区中转可以，电信再快也留移动节点', () => {
+test('私网和网段外地址不能下发，钉住的自定义地址可以', () => {
   assert.equal(位于云墙网段('104.18.32.73'), true);
   assert.equal(位于云墙网段('104.16.0.1'), true);
   assert.equal(位于云墙网段('68.64.183.37'), false);
@@ -270,7 +273,7 @@ test('私网地址不能下发，社区中转可以，电信再快也留移动�
   assert.equal(是公网地址('10.1.1.1'), false);
   assert.equal(是公网地址('68.64.183.37'), true);
   assert.equal(可拨号节点({ ip: '68.64.183.37', kind: 'v4' }), false);
-  assert.equal(可拨号节点({ ip: '68.64.183.37', kind: 'v4', relay: true }), true);
+  assert.equal(可拨号节点({ ip: '68.64.183.37', kind: 'v4', relay: true }), false);
   assert.equal(可拨号节点({ ip: '10.1.1.1', kind: 'v4', relay: true }), false);
   assert.equal(可拨号节点({ ip: '45.145.229.223', kind: 'v4', pinned: true }), true);
   const 请求 = 构造握手请求('www.cloudflare.com');
@@ -287,13 +290,15 @@ test('每个运营商各留一个保底，入口域名紧跟这组地址', () =>
     { ip: '104.17.1.8', port: 443, isp: '移动', tier: 1, kind: 'v4', latency: 51, speed: 0.2, region: '', alive: true },
     { ip: '1.2.3.4', port: 443, isp: '自定甲', tier: 1, kind: 'v4', latency: null, speed: 0, region: '', pinned: true }
   ]);
-  assert.equal(列表.find(项 => 项.ip === '104.18.32.73').isp, '保底·电信');
-  assert.equal(列表.find(项 => 项.ip === '104.17.1.8').isp, '保底·移动');
+  assert.equal(列表.find(项 => 项.ip === '104.18.32.73').isp, '电信');
+  assert.equal(列表.find(项 => 项.ip === '104.18.32.73').tier, 0);
+  assert.equal(列表.find(项 => 项.ip === '104.17.1.8').isp, '移动');
+  assert.equal(列表.find(项 => 项.ip === '104.17.1.8').tier, 0);
   assert.equal(列表.find(项 => 项.ip === '1.2.3.4').isp, '自定甲');
   assert.equal(列表.find(项 => 项.ip === '172.71.218.190').tier, 2);
   const 入口 = 生成入口节点('example.com');
   const 结果 = 编排优选节点(列表.concat([入口]), { ...选项, limit: 10, balance: false });
-  assert.equal(结果[0].isp, '保底·电信');
+  assert.equal(结果[0].isp, '电信');
   const 入口位 = 结果.findIndex(项 => 项.isp === '入口');
   assert.ok(入口位 > 0);
   assert.ok(结果.slice(0, 入口位).every(项 => 项.tier === 0 && 项.kind !== 'domain'));
@@ -419,6 +424,12 @@ test('套用脚本可重复执行，工人脚本语法保持有效', () => {
   const 二次 = fs.readFileSync(new URL('../_worker.js', import.meta.url));
   assert.equal(一次.equals(二次), true);
   assert.match(二次.toString(), /组装线路优化节点/);
+  assert.match(二次.toString(), /stable5/);
+  assert.match(二次.toString(), /线路优化新鲜毫秒 = 10 \* 60 \* 1000/);
+  assert.doesNotMatch(二次.toString(), /入口补位\(候选/);
+  assert.doesNotMatch(二次.toString(), /随机补足节点\(4\)/);
+  assert.doesNotMatch(二次.toString(), /name: "🚄 电信大带宽"/);
+  assert.doesNotMatch(二次.toString(), /name: "🧠 Codex智能"/);
   assert.equal(二次.toString().split('/* ROUTE_OPT_START calm */').length, 3);
   execFileSync(process.execPath, ['--check', '_worker.js'], { cwd: new URL('..', import.meta.url) });
 });
@@ -441,7 +452,7 @@ test('订阅请求会走优选、保底前置和缓存', async () => {
   assert.ok(new Set(行1.map(行 => new URL(行).searchParams.get('path'))).size > 1);
   assert.match(摘要1, /selected=\d+/);
   assert.match(摘要1, /edge_ok=\d+;edge_tested=\d+;history=\d+;stable=\d+;user_ok=unknown/);
-  assert.match(decodeURIComponent(行1[0]), /保底|移动|联通|电信|香港|台湾|日本/);
+  assert.match(decodeURIComponent(行1[0]), /保底|移动|联通|电信|香港|台湾|日本|入口|优选/);
   assert.equal(行1.some(行 => /@(?:10\.|127\.|192\.168\.|0\.0\.0\.0)/.test(行)), false);
   assert.equal(行1.some(行 => 行.includes('[')), false);
   assert.doesNotMatch(摘要1, /(?:^|;)alive=/);
@@ -457,13 +468,9 @@ test('订阅请求会走优选、保底前置和缓存', async () => {
   assert.match(Clash正文, /path: "?\/assets\/[0-9a-f]+\?ed=2048"?/);
   assert.match(Clash正文, /- name: "⚡ 自动选择"\s*\n\s+type: url-test/);
   assert.match(Clash正文, /url: https:\/\/www\.gstatic\.com\/generate_204\s*\n\s+expected-status: 204\s*\n\s+interval: 600\s*\n\s+tolerance: 50\s*\n\s+lazy: true/);
-  assert.match(Clash正文, /- name: "🧠 Codex智能"\s*\n\s+type: url-test/);
-  assert.match(Clash正文, /url: https:\/\/chatgpt\.com\/cdn-cgi\/trace\s*\n\s+expected-status: 200\s*\n\s+interval: 900\s*\n\s+tolerance: 100\s*\n\s+lazy: true/);
-  assert.match(Clash正文, /- name: "⚡ 电信低延迟"\s*\n\s+type: url-test/);
-  assert.match(Clash正文, /url: https:\/\/chatgpt\.com\/cdn-cgi\/trace\s*\n\s+expected-status: 200\s*\n\s+interval: 900\s*\n\s+tolerance: 80\s*\n\s+lazy: true/);
-  assert.match(Clash正文, /- name: "🚄 电信大带宽"\s*\n\s+type: fallback\s*\n\s+url: https:\/\/chatgpt\.com\/cdn-cgi\/trace\s*\n\s+expected-status: 200\s*\n\s+interval: 1800\s*\n\s+lazy: true/);
-  assert.match(Clash正文, /- name: "🚀 节点选择"\s*\n\s+type: select\s*\n\s+proxies:\s*\n\s+- "⚡ 自动选择"\s*\n\s+- "🧠 Codex智能"\s*\n\s+- "🚄 电信大带宽"\s*\n\s+- "⚡ 电信低延迟"/);
-  assert.match(Clash正文, /- name: "🤖 OpenAI"\s*\n\s+type: select\s*\n\s+proxies:\s*\n\s+- "🧠 Codex智能"\s*\n\s+- "🚄 电信大带宽"\s*\n\s+- "⚡ 电信低延迟"\s*\n\s+- "⚡ 自动选择"\s*\n\s+- "🚀 节点选择"/);
+  assert.doesNotMatch(Clash正文, /电信大带宽|电信低延迟|Codex智能/);
+  assert.match(Clash正文, /- name: "🚀 节点选择"\s*\n\s+type: select\s*\n\s+proxies:\s*\n\s+- "⚡ 自动选择"\s*\n\s+- "🎯 全球直连"/);
+  assert.match(Clash正文, /- name: "🤖 OpenAI"\s*\n\s+type: select\s*\n\s+proxies:\s*\n\s+- "⚡ 自动选择"\s*\n\s+- "🚀 节点选择"/);
   assert.match(Clash正文, /DOMAIN-SUFFIX,github\.com,🤖 OpenAI/);
   assert.match(Clash正文, /DOMAIN-SUFFIX,codeload\.github\.com,🤖 OpenAI/);
   assert.match(Clash正文, /DOMAIN-SUFFIX,github-cloud\.s3\.amazonaws\.com,🤖 OpenAI/);

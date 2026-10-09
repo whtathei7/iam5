@@ -10,7 +10,7 @@ let 启用优选合并 = false;
 let 六版下发策略 = 'off';
 let 线路优选地区 = 'all';
 let 线路兜底池 = '';
-const 线路优化新鲜毫秒 = 30 * 60 * 1000;
+const 线路优化新鲜毫秒 = 10 * 60 * 1000;
 const 线路优化保留毫秒 = 6 * 60 * 60 * 1000;
 let 线路优化内存 = null;
 let 线路优化刷新任务 = null;
@@ -112,7 +112,7 @@ function 读取当前线路选项() {
 
 function 线路缓存键(选项, 自定义摘要) {
   return [
-    'ctcm4',
+    'stable5',
     选项.region,
     选项.mobile ? 1 : 0,
     选项.unicom ? 1 : 0,
@@ -294,19 +294,18 @@ async function 探测握手(主机, 端口, 超时毫秒) {
   }
 }
 
-async function 测活候选(候选, 选项, 严格 = false) {
-  if (!选项.probe) return { nodes: 候选, effective: true };
-  const 样本 = 挑选测活样本((候选 || []).filter(节点 => 节点.kind !== 'domain' && 位于云墙网段(节点.ip)), 16);
-  if (!样本.length) return 应用握手结果(候选, [], 选项, 严格);
+async function 测活候选(候选, 选项) {
+  if (!选项.probe) return { nodes: (候选 || []).filter(稳定可下发), effective: true };
+  const 样本 = (候选 || []).filter(节点 => 节点 && 节点.kind !== 'domain' && (节点.pinned || 位于云墙网段(节点.ip))).slice(0, 18);
+  if (!样本.length) return 应用握手结果(候选, [], 选项, true);
   const 首轮 = await 并发映射(样本, 4, async 节点 => {
     const 端口 = 规范云墙端口(节点.port, !!节点.pinned);
     const 状态 = await 探测握手(节点.ip, 端口, 900);
     return { key: 节点键(节点), port: 端口, status: 状态, node: 节点 };
   });
   let 结果 = 首轮.map(项 => ({ key: 项.key, port: 项.port, status: 项.status }));
-  const 活着 = 结果.filter(项 => 项.status === 'ok').length;
-  if (活着 < 8) {
-    const 失败 = 首轮.filter(项 => 项.status !== 'ok').slice(0, 6);
+  const 失败 = 首轮.filter(项 => 项.status !== 'ok').slice(0, 8);
+  if (失败.length) {
     const 补救 = await 并发映射(失败, 3, async 项 => {
       const 状态 = await 探测握手(项.node.ip, 8443, 700);
       if (状态 === 'ok') return { key: 项.key, port: 8443, status: 'ok' };
@@ -315,7 +314,7 @@ async function 测活候选(候选, 选项, 严格 = false) {
     const 补表 = new Map(补救.map(项 => [项.key, 项]));
     结果 = 结果.map(项 => 补表.get(项.key) || 项);
   }
-  return 应用握手结果(候选, 结果, 选项, 严格);
+  return 应用握手结果(候选, 结果, 选项, true);
 }
 
 async function 域名仍可解析(域名) {
@@ -379,7 +378,7 @@ function 自定义转节点() {
 }
 
 function 收成云墙(列表) {
-  return (列表 || []).filter(节点 => 可拨号节点(节点, !!节点.pinned)).map(节点 => {
+  return (列表 || []).filter(节点 => 可拨号节点(节点)).map(节点 => {
     if (!节点 || 节点.kind === 'domain') return 节点;
     return { ...节点, port: 规范云墙端口(节点.port, !!节点.pinned) };
   });
@@ -442,10 +441,8 @@ async function 拉取远程优选(选项) {
         return 输出;
       }));
     }
-    任务.push(() => 拉取并解析(优选域名源, { tier: 4, fallbackName: '优选域名', prefer: 'isp', maxLines: 80 }).then(列表 => 列表.filter(项 => 项.kind === 'domain').slice(0, 4)));
-    const 地区网址 = 选项.pool.length ? 选项.pool : (选项.region === 'all' ? 内置地区代码 : [选项.region]).map(内置地区源).filter(Boolean);
-    for (const 网址 of 地区网址) {
-      任务.push(() => 拉取并解析(网址, { tier: 2, fallbackName: '中转', prefer: 'region', maxLines: 20 }).then(列表 => 标成社区节点(列表.slice(0, 3), true)));
+    for (const 网址 of 选项.pool) {
+      任务.push(() => 拉取并解析(网址, { tier: 1, fallbackName: '优选IP', prefer: 'isp', maxLines: 40 }).then(列表 => 标成社区节点(列表)));
     }
     if (选项.v6policy !== 'off' && 选项.ipv6) {
       任务.push(() => 拉取并解析(六版优选源, { tier: 3, fallbackName: 'IPv6优选', prefer: 'isp', maxLines: 30 }).then(列表 => 标成社区节点(列表.filter(项 => 项.kind === 'v6').slice(0, 8))));
@@ -486,18 +483,10 @@ async function 刷新线路候选(键, 选项, 本地候选, 独占, 历史节�
     let 远程 = [];
     if (!独占 && (启用优选地址 || (启用仓库优选 && 优选地址源))) 远程 = await 拉取远程优选(选项);
     let 候选 = 收成云墙(本地候选.concat(远程));
-    if (启用优选域名 && !独占) 候选 = 候选.concat(await 选取优选域名(2));
     候选 = 保留可用速度(筛选优选(合并去重(候选), 选项), 4);
-    if (选项.anchor && !独占) 候选 = 入口补位(候选, 8);
-    候选 = 扩展备用端口(候选);
     const 测活 = await 测活候选(候选, 选项);
-    候选 = 更新测活历史(测活.nodes, 历史节点);
-    let 四版数 = 候选.filter(项 => 项.kind === 'v4' && 项.tier !== 5).length;
-    if (启用优选地址 && !独占 && 选项.probe && 四版数 < 4) {
-      const 补测 = await 测活候选(随机补足节点(4), { ...选项, limit: 8 }, true);
-      候选 = 合并去重(候选.concat((补测.nodes || []).filter(项 => 项.kind === 'v4' && 项.alive)));
-      四版数 = 候选.filter(项 => 项.kind === 'v4' && 项.tier !== 5).length;
-    }
+    候选 = 更新测活历史(测活.nodes, 历史节点).filter(稳定可下发);
+    const 四版数 = 候选.filter(项 => 项.kind === 'v4').length;
     if (候选.length) await 写入线路缓存(键, 候选, 测活.effective && 四版数 > 0, 独占);
     return 候选;
   })().finally(() => {
@@ -537,15 +526,11 @@ async function 组装线路优化节点() {
     缓存状态 = 候选.length ? 'miss' : 'empty';
     if (!候选.length) 候选 = 筛选优选(合并去重(收成云墙(本地)), 选项);
   }
-  候选 = 扩展备用端口(候选);
-  候选 = 标注保底(候选);
+  候选 = (候选 || []).filter(稳定可下发);
+  if (选项.anchor && !独占) 候选 = 标注保底(候选);
   const 入口 = 生成入口节点(线路入口域名);
   if (入口) 候选 = 合并去重(候选.concat([入口]));
-  let 最终 = 编排优选节点(候选, 选项);
-  const 高速排名 = new Map(挑选电信大带宽节点(最终, 6).map((节点, 索引) => [节点键(节点), 索引 + 1]));
-  最终 = 最终.map(节点 => 高速排名.has(节点键(节点)) && !/^高速\d+·/.test(String(节点.isp || ''))
-    ? { ...节点, isp: `高速${String(高速排名.get(节点键(节点))).padStart(2, '0')}·${节点.isp || '电信'}`, bandwidth: true }
-    : 节点);
+  let 最终 = 编排优选节点(候选, 选项).filter(节点 => 节点 && (节点.kind === 'domain' || 可拨号节点(节点)));
   const 备用前置域名 = 读取备用前置域名();
   最终 = 分配前置域名(最终, 线路入口域名, 备用前置域名);
   const 池内 = 候选.filter(项 => 项.kind !== 'domain').length;

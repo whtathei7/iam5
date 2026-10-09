@@ -134,14 +134,14 @@ const 面板 = `                        <div style="margin-bottom: 15px;">
                                 <div style="display: flex; flex-wrap: wrap; gap: 14px; margin: 8px 0 12px;">
                                     <label style="display: inline-flex; align-items: center; cursor: pointer; color: #00f0ff;">
                                         <input type="checkbox" id="optAnchor" checked style="margin-right: 8px; width: 18px; height: 18px; cursor: pointer;">
-                                        <span>保底节点前置</span>
+                                        <span>最快节点前置</span>
                                     </label>
                                     <label style="display: inline-flex; align-items: center; cursor: pointer; color: #00f0ff;">
                                         <input type="checkbox" id="optProbe" checked style="margin-right: 8px; width: 18px; height: 18px; cursor: pointer;">
                                         <span>下发前测活</span>
                                     </label>
                                     <label style="display: inline-flex; align-items: center; cursor: pointer; color: #00f0ff;">
-                                        <input type="checkbox" id="optBalance" checked style="margin-right: 8px; width: 18px; height: 18px; cursor: pointer;">
+                                        <input type="checkbox" id="optBalance" style="margin-right: 8px; width: 18px; height: 18px; cursor: pointer;">
                                         <span>头部轮换</span>
                                     </label>
                                     <label style="display: inline-flex; align-items: center; cursor: pointer; color: #00f0ff;">
@@ -149,7 +149,7 @@ const 面板 = `                        <div style="margin-bottom: 15px;">
                                         <span>自定义节点合并默认池</span>
                                     </label>
                                 </div>
-                                <div class="opt-note" style="font-size: 13px; line-height: 1.6; margin-bottom: 10px;">电信、移动优质节点优先，订阅里可以选择自动最快。联通、地区中转和 8443 仍会保留。</div>
+                                <div class="opt-note" style="font-size: 13px; line-height: 1.6; margin-bottom: 10px;">持续拉取 BestCF 的电信、移动实测地址。只下发 Cloudflare 网段里握手成功的节点，订阅默认自动选择最快。</div>
                                 <div style="display: flex; flex-wrap: wrap; gap: 12px;">
                                     <div style="min-width: 120px; flex: 1;">
                                         <label style="display: block; margin-bottom: 6px; color: #00f0ff;">下发数量</label>
@@ -179,9 +179,9 @@ const 面板 = `                        <div style="margin-bottom: 15px;">
                                 </div>
                                 <div style="margin-top: 12px;">
                                     <label style="display: block; margin-bottom: 6px; color: #00f0ff;">兜底优选池 URL</label>
-                                    <textarea id="optPool" rows="3" placeholder="留空使用实测优选。只采纳 Cloudflare 网段，每行一个 https 地址，最多 6 个" style="width: 100%; padding: 10px; background: rgba(0, 0, 0, 0.8); border: 1px solid #00f0ff; color: #00f0ff; font-family: 'Courier New', monospace; font-size: 13px;"></textarea>
+                                    <textarea id="optPool" rows="3" placeholder="留空即可。额外地址只有落在 Cloudflare 网段才会进入订阅，每行一个 https 地址，最多 6 个" style="width: 100%; padding: 10px; background: rgba(0, 0, 0, 0.8); border: 1px solid #00f0ff; color: #00f0ff; font-family: 'Courier New', monospace; font-size: 13px;"></textarea>
                                 </div>
-                                <small style="color: #7aa9c4; font-size: 0.85rem; display: block; margin-top: 10px;">只下发 Cloudflare 网段里的地址。下发前做 TLS 握手，握手失败的地址不再下发；延迟低、速度快的排在最前。本机域名作为入口，避免优选地址全灭时订阅里没有能用的节点。</small>
+                                <small style="color: #7aa9c4; font-size: 0.85rem; display: block; margin-top: 10px;">优选结果超过 10 分钟会在后台更新，6 小时内仍先用上一份。握手失败、连续失败和 Cloudflare 网段以外的地址都不会出现在订阅里。</small>
                             </div>
                         </div>
 `;
@@ -203,7 +203,7 @@ const 面板 = `                        <div style="margin-bottom: 15px;">
   opt: 'yes',
   optLimit: '36',
   optProbe: 'yes',
-  optBalance: 'yes',
+  optBalance: 'no',
   optAnchor: 'yes',
   optMerge: 'no',
   v6policy: 'off',
@@ -335,22 +335,9 @@ const 面板 = `                        <div style="margin-bottom: 15px;">
 写入(
   'clash-auto-fastest',
   `  const 值值577 = [解码64('cHJveHktZ3JvdXBzOg=='), '  - name: "🚀 节点选择"', '    type: select', '    proxies:', '      - "🎯 全球直连"', 节点仅,`,
-  `  const 低延迟组名 = '⚡ 电信低延迟';
-  const 大带宽组名 = '🚄 电信大带宽';
-  const Codex智能组名 = '🧠 Codex智能';
-  const 自动选择组名 = '⚡ 自动选择';
-  const Codex测试网址 = 'https://chatgpt.com/cdn-cgi/trace';
+  `  const 自动选择组名 = '⚡ 自动选择';
   const 自动测速网址 = 'https://www.gstatic.com/generate_204';
-  const 电信节点 = 节点列表586.filter(节点 => /电信/.test(节点.name || ''));
-  const 低延迟节点 = 挑选自动测速节点(电信节点.length ? 电信节点 : 节点列表586, 8);
-  const Codex候选节点 = 挑选自动测速节点(节点列表586, 12);
-  const 自动选择节点 = 挑选自动最快节点(节点列表586, 8);
-  const 高速节点 = 节点列表586.filter(节点 => /高速\\d+·.*电信/.test(节点.name || '')).sort((甲, 乙) => {
-    const 甲序 = Number((甲.name.match(/高速(\\d+)·/) || [])[1]) || 999;
-    const 乙序 = Number((乙.name.match(/高速(\\d+)·/) || [])[1]) || 999;
-    return 甲序 - 乙序;
-  });
-  const 大带宽节点 = 挑选自动测速节点(高速节点.length ? 高速节点 : 低延迟节点, 6);
+  const 自动选择节点 = 挑选自动最快节点(节点列表586, 12);
   const 列出测速节点 = 列表 => 列表.length ? 列表.map(节点 => \`      - \${处理本地值622(节点.name)}\`).join('\\n') : '      - DIRECT';
   const 自动选择组 = [
     '  - name: "' + 自动选择组名 + '"',
@@ -363,55 +350,20 @@ const 面板 = `                        <div style="margin-bottom: 15px;">
     '    proxies:',
     列出测速节点(自动选择节点)
   ].join('\\n');
-  const 低延迟组 = [
-    '  - name: "' + 低延迟组名 + '"',
-    '    type: url-test',
-    '    url: ' + Codex测试网址,
-    '    expected-status: 200',
-    '    interval: 900',
-    '    tolerance: 80',
-    '    lazy: true',
-    '    proxies:',
-    列出测速节点(低延迟节点)
-  ].join('\\n');
-  const 大带宽组 = [
-    '  - name: "' + 大带宽组名 + '"',
-    '    type: fallback',
-    '    url: ' + Codex测试网址,
-    '    expected-status: 200',
-    '    interval: 1800',
-    '    lazy: true',
-    '    proxies:',
-    列出测速节点(大带宽节点)
-  ].join('\\n');
-  const Codex智能组 = [
-    '  - name: "' + Codex智能组名 + '"',
-    '    type: url-test',
-    '    url: ' + Codex测试网址,
-    '    expected-status: 200',
-    '    interval: 900',
-    '    tolerance: 100',
-    '    lazy: true',
-    '    proxies:',
-    列出测速节点(Codex候选节点)
-  ].join('\\n');
-  const Codex优先仅 = [
-    '      - "' + Codex智能组名 + '"',
-    '      - "' + 大带宽组名 + '"',
-    '      - "' + 低延迟组名 + '"',
+  const 自动优先仅 = [
     '      - "' + 自动选择组名 + '"',
     '      - "🚀 节点选择"',
     '      - "🎯 全球直连"',
     节点仅
   ].join('\\n');
-  const 值值577 = [解码64('cHJveHktZ3JvdXBzOg=='), 自动选择组, Codex智能组, 大带宽组, 低延迟组, '  - name: "🚀 节点选择"', '    type: select', '    proxies:', '      - "' + 自动选择组名 + '"', '      - "' + Codex智能组名 + '"', '      - "' + 大带宽组名 + '"', '      - "' + 低延迟组名 + '"', '      - "🎯 全球直连"', 节点仅,`
+  const 值值577 = [解码64('cHJveHktZ3JvdXBzOg=='), 自动选择组, '  - name: "🚀 节点选择"', '    type: select', '    proxies:', '      - "' + 自动选择组名 + '"', '      - "🎯 全球直连"', 节点仅,`
 );
 
 写入(
   'surge-auto-fastest',
   '  行列表555.push(`🚀 节点选择 = select, 🎯 全球直连, ${列表553}`);',
   `  const 自动选择名 = '⚡ 自动选择';
-  const 自动候选 = 挑选自动最快节点(节点列表560.map(项 => ({ name: 项.name, server: 项.server, port: 项.port, sni: 项.sni })), 8);
+  const 自动候选 = 挑选自动最快节点(节点列表560.map(项 => ({ name: 项.name, server: 项.server, port: 项.port, sni: 项.sni })), 12);
   const 自动名单 = 自动候选.length ? 自动候选.map(项 => 项.name).join(', ') : (名称列表557[0] || 'DIRECT');
   行列表555.push(\`\${自动选择名} = url-test, \${自动名单}, url=http://www.gstatic.com/generate_204, interval=600, tolerance=50, timeout=5\`);
   行列表555.push(\`🚀 节点选择 = select, \${自动选择名}, 🎯 全球直连, \${列表553}\`);`
@@ -421,7 +373,7 @@ const 面板 = `                        <div style="margin-bottom: 15px;">
   'loon-auto-fastest',
   '  行列表546.push(`🚀 节点选择 = select,🎯 全球直连,${列表542}`);',
   `  const 自动选择名 = '⚡ 自动选择';
-  const 自动候选 = 挑选自动最快节点(节点列表550.map(项 => ({ name: 项.name, server: 项.server, port: 项.port, sni: 项.sni })), 8);
+  const 自动候选 = 挑选自动最快节点(节点列表550.map(项 => ({ name: 项.name, server: 项.server, port: 项.port, sni: 项.sni })), 12);
   const 自动名单 = 自动候选.length ? 自动候选.map(项 => 项.name).join(',') : (名称列表548[0] || 'DIRECT');
   行列表546.push(\`\${自动选择名} = url-test,\${自动名单},url=http://www.gstatic.com/generate_204,interval=600,tolerance=50\`);
   行列表546.push(\`🚀 节点选择 = select,\${自动选择名},🎯 全球直连,\${列表542}\`);`
@@ -431,7 +383,7 @@ const 面板 = `                        <div style="margin-bottom: 15px;">
   'qx-auto-fastest',
   '  行列表538.push(`static=🚀 节点选择, ${列表534}, direct, img-url=${解码64(\'aHR0cHM6Ly9mYXN0bHkuanNkZWxpdnIubmV0L2doL0tvb2xzb24vUXVyZUBtYXN0ZXIvSWNvblNldC9Db2xvci9Qcm94eS5wbmc=\')}`);',
   `  const 自动选择名 = '⚡ 自动选择';
-  const 自动候选 = 挑选自动最快节点(节点列表.map(项 => ({ name: 项.name, server: 项.server, port: 项.port, sni: 项.sni })), 8);
+  const 自动候选 = 挑选自动最快节点(节点列表.map(项 => ({ name: 项.name, server: 项.server, port: 项.port, sni: 项.sni })), 12);
   const 自动名单 = 自动候选.length ? 自动候选.map(项 => 项.name).join(', ') : 'direct';
   行列表538.push(\`url-latency-benchmark=\${自动选择名}, \${自动名单}, check-interval=600, tolerance=50, img-url=https://fastly.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Auto.png\`);
   行列表538.push(\`static=🚀 节点选择, \${自动选择名}, \${列表534}, direct, img-url=\${解码64('aHR0cHM6Ly9mYXN0bHkuanNkZWxpdnIubmV0L2doL0tvb2xzb24vUXVyZUBtYXN0ZXIvSWNvblNldC9Db2xvci9Qcm94eS5wbmc=')}\`);`
@@ -441,7 +393,7 @@ const 面板 = `                        <div style="margin-bottom: 15px;">
   'singbox-auto-candidates',
   '  const 出站值 = 节点列表572.map(数量值569 => 数量值569.name);',
   `  const 出站值 = 节点列表572.map(数量值569 => 数量值569.name);
-  const 自动选择候选 = 挑选自动最快节点(节点列表572.map(项 => ({ name: 项.name, server: 项.server, port: 项.port, sni: 项.sni })), 8).map(项 => 项.name);
+  const 自动选择候选 = 挑选自动最快节点(节点列表572.map(项 => ({ name: 项.name, server: 项.server, port: 项.port, sni: 项.sni })), 12).map(项 => 项.name);
   const 自动选择出站 = 自动选择候选.length ? 自动选择候选 : 出站值.slice(0, 8);`
 );
 
@@ -472,7 +424,7 @@ const 面板 = `                        <div style="margin-bottom: 15px;">
 写入(
   'codex-openai-priority',
   `'  - name: "🤖 OpenAI"', '    type: select', '    proxies:', 处理值选择值(名称列表584),`,
-  `'  - name: "🤖 OpenAI"', '    type: select', '    proxies:', Codex优先仅,`
+  `'  - name: "🤖 OpenAI"', '    type: select', '    proxies:', 自动优先仅,`
 );
 
 写入(
@@ -648,7 +600,7 @@ const 面板 = `                        <div style="margin-bottom: 15px;">
   写入开关值('optEnabled', 配置.opt, true);
   写入开关值('optAnchor', 配置.optAnchor, true);
   写入开关值('optProbe', 配置.optProbe, true);
-  写入开关值('optBalance', 配置.optBalance, true);
+  写入开关值('optBalance', 配置.optBalance, false);
   写入开关值('optMerge', 配置.optMerge, false);
   写入字段值('optLimit', 配置.optLimit || '36');
   写入字段值('v6policy', 配置.v6policy || 'off');
@@ -665,7 +617,7 @@ const 面板 = `                        <div style="margin-bottom: 15px;">
     opt: 读取开关值('optEnabled', true),
     optAnchor: 读取开关值('optAnchor', true),
     optProbe: 读取开关值('optProbe', true),
-    optBalance: 读取开关值('optBalance', true),
+    optBalance: 读取开关值('optBalance', false),
     optMerge: 读取开关值('optMerge', false),
     optLimit: 读取字段值('optLimit') || '36',
     v6policy: 读取字段值('v6policy') || 'off',

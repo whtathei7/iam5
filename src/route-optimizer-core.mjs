@@ -1,7 +1,7 @@
 // 线路优化的纯逻辑。订阅生成时由 _worker.js 调用，单测直接引用本文件。
 // 思路借鉴 CFNext：按测速和延迟挑高质量地址、443 优先、分运营商留名额、订阅里提供自动选择最快节点。
-// 主力来自 BestCF 首页列出的电信、移动实测结果；联通和地区中转只作补位。
-// Worker 上的握手只能证明 Cloudflare 边缘自己能连，不能据此丢掉用户侧已经测过速度的地址。
+// 主力只取 BestCF 上带运营商标签、且地址落在 Cloudflare 网段的电信、移动实测结果。
+// 客户端用本 Worker 的域名做 SNI，地址不在 Cloudflare 网段时订阅里看得到也拨不通。
 // 实现独立，不复制其源码。
 
 export const 内置地区代码 = ['HK', 'TW', 'JP', 'SG', 'US', 'KR'];
@@ -14,22 +14,19 @@ export const 地区云墙源 = {
   KR: 'https://bestcf.pages.dev/random-region/KR/20.txt',
   DE: 'https://bestcf.pages.dev/random-region/DE/20.txt'
 };
-// BestCF 首页上带运营商标签或实测速度的源。电信、移动是主力；联通只留少量。
+// BestCF 首页上带运营商标签的 Cloudflare 实测源。电信、移动是主力；联通只留少量。
 // 微测、麒麟、CFYes、vvHan 都在 bestcf.pages.dev，必须按标签拆开。
-// 后三个是首页列出的电信/移动专线，地址不在 Cloudflare 官方网段，按社区中转处理。
+// 首页上的专线和地区随机列表大多不在 Cloudflare 网段，默认不拉取。
 export const 主力优选源 = [
-  { url: 'https://bestcf.pages.dev/uouin/all.txt', isps: ['电信', '移动', '联通'], taggedOnly: true, relay: false, maxLines: 80, limits: { 电信: 8, 移动: 6, 联通: 3 } },
+  { url: 'https://bestcf.pages.dev/uouin/all.txt', isps: ['电信', '移动', '联通'], taggedOnly: true, relay: false, maxLines: 80, limits: { 电信: 8, 移动: 6, 联通: 2 } },
   { url: 'https://bestcf.pages.dev/wetest/ipv4.txt', isps: ['电信', '移动', '联通'], taggedOnly: true, relay: false, maxLines: 40, limits: { 电信: 5, 移动: 5, 联通: 2 } },
   { url: 'https://bestcf.pages.dev/cfyes/ipv4.txt', isps: ['电信', '移动', '联通'], taggedOnly: true, relay: false, maxLines: 40, limits: { 电信: 5, 移动: 5, 联通: 2 } },
-  { url: 'https://bestcf.pages.dev/vvhan/ipv4.txt', isps: ['电信', '移动'], taggedOnly: true, relay: false, maxLines: 80, limits: { 电信: 4, 移动: 4 } },
-  { url: 'https://cf.junzhen.qzz.io/best_ips_bj.txt', isps: ['电信'], taggedOnly: false, relay: true, maxLines: 80, limits: { 电信: 4 } },
-  { url: 'https://raw.githubusercontent.com/love-ztm/cfip/refs/heads/main/best_ips.txt', isps: ['电信'], taggedOnly: false, relay: true, maxLines: 40, limits: { 电信: 4 } },
-  { url: 'https://raw.githubusercontent.com/svip-s/cloudflare_ip/refs/heads/main/best_ips.txt', isps: ['移动'], taggedOnly: false, relay: true, maxLines: 40, limits: { 移动: 4 } }
+  { url: 'https://bestcf.pages.dev/vvhan/ipv4.txt', isps: ['电信', '移动'], taggedOnly: true, relay: false, maxLines: 80, limits: { 电信: 4, 移动: 4 } }
 ];
 export const 优选域名源 = 'https://bestcf.pages.dev/domain/all.txt';
 export const 六版优选源 = 'https://bestcf.pages.dev/cfyes/ipv6.txt';
 export const 运营商顺序 = ['电信', '移动', '联通', '多线', '中转', '其他'];
-export const 主力节拍 = ['电信', '移动', '电信', '移动', '联通', '中转', '多线', '其他'];
+export const 主力节拍 = ['电信', '移动', '电信', '移动', '联通', '中转', '其他'];
 export const 自动测速网址 = 'https://www.gstatic.com/generate_204';
 export const 云墙安全端口 = [443, 2053, 2083, 2087, 2096, 8443];
 export const 云墙明文端口 = [80, 8080, 8880, 2052, 2082, 2086, 2095];
@@ -195,7 +192,7 @@ export function 整理线路选项(输入 = {}) {
     enabled: 开关值(输入.opt, true),
     limit: 整理数量(输入.optLimit, 36),
     probe: 开关值(输入.optProbe, true),
-    balance: 开关值(输入.optBalance, true),
+    balance: 开关值(输入.optBalance, false),
     anchor: 开关值(输入.optAnchor, true),
     merge: 开关值(输入.optMerge, false),
     v6policy: 整理六版策略(输入.v6policy),
@@ -285,12 +282,22 @@ export function 是公网地址(地址) {
   return true;
 }
 
-export function 可拨号节点(节点, 允许外部 = false) {
+export function 可拨号节点(节点) {
   if (!节点 || !节点.ip || !节点.kind) return false;
   if (节点.kind === 'domain') return true;
   if (!是公网地址(节点.ip)) return false;
-  if (允许外部 || 节点.pinned || 节点.relay) return true;
+  if (节点.pinned) return true;
   return 位于云墙网段(节点.ip);
+}
+
+export function 稳定可下发(节点) {
+  if (!节点 || !节点.ip) return false;
+  if (节点.kind === 'domain') return true;
+  if (节点.tier === 5) return false;
+  if (!可拨号节点(节点)) return false;
+  if ((Number(节点.failureStreak) || 0) >= 2) return false;
+  if (节点.edgeStatus && 节点.edgeStatus !== 'ok') return false;
+  return true;
 }
 
 export function 运营商名(节点) {
@@ -695,23 +702,18 @@ export function 保留可用速度(列表, 每家 = 4) {
       continue;
     }
     const 排序 = 节点列.slice().sort(比较优选);
+    const 稳定 = 排序.filter(节点 => !节点.relay && (Number(节点.failureStreak) || 0) < 2 && (节点.pinned || 位于云墙网段(节点.ip)));
     if (键 === '电信' || 键 === '移动') {
       const 选出 = [];
       const 已见 = new Set();
-      const 测速 = 排序.filter(节点 => !节点.relay && 节点.speed >= 1);
-      const 精选 = 排序.filter(节点 => !节点.relay && !(节点.speed >= 1));
-      const 中转 = 排序.filter(节点 => 节点.relay);
-      收入不重复(选出, 已见, 测速, 8);
-      收入不重复(选出, 已见, 精选, 4);
-      收入不重复(选出, 已见, 中转, 4);
+      const 测速 = 稳定.filter(节点 => 节点.speed >= 1);
+      const 精选 = 稳定.filter(节点 => !(节点.speed >= 1));
+      收入不重复(选出, 已见, 测速, 6);
+      if (选出.length < 4) 收入不重复(选出, 已见, 精选, 4 - 选出.length);
       结果.push(...选出);
       continue;
     }
-    const 快 = 排序.filter(节点 => 节点.relay || 节点.speed >= 1);
-    const 慢 = 排序.filter(节点 => !节点.relay && 节点.speed > 0 && 节点.speed < 1);
-    const 未知 = 排序.filter(节点 => !节点.relay && !(节点.speed > 0));
-    const 主体 = 快.length >= 每家 ? 快 : 快.concat(慢);
-    结果.push(...主体.concat(未知).slice(0, 上限));
+    结果.push(...稳定.slice(0, 键 === '联通' ? 2 : Math.min(上限, 2)));
   }
   return 结果;
 }
@@ -730,12 +732,8 @@ function 收入不重复(目标, 已见, 候选, 数量) {
 
 export function 应用握手结果(列表, 探测, 选项, 严格 = false) {
   const 原文 = 列表 || [];
-  if (!选项 || !选项.probe) return { nodes: 原文, effective: true };
+  if (!选项 || !选项.probe) return { nodes: 原文.filter(稳定可下发), effective: true };
   const 表 = new Map((探测 || []).filter(项 => 项 && 项.key).map(项 => [项.key, 项]));
-  if (!表.size) {
-    const 节点 = 严格 ? 原文.filter(项 => 项 && (项.kind === 'domain' || 社区节点(项))) : 原文;
-    return { nodes: 节点, effective: 节点.some(项 => 项 && 项.kind !== 'domain' && 社区节点(项)) };
-  }
   const 留下 = [];
   for (const 节点 of 原文) {
     if (!节点) continue;
@@ -745,19 +743,14 @@ export function 应用握手结果(列表, 探测, 选项, 严格 = false) {
     }
     const 结果 = 表.get(节点键(节点));
     if (!结果) {
-      if (严格 && !社区节点(节点)) continue;
-      留下.push(节点);
+      if (!严格 && 节点.pinned) 留下.push(节点);
       continue;
     }
-    if (结果.status === 'ok') {
-      留下.push({ ...节点, port: 结果.port || 节点.port || 443, alive: true, edgeStatus: 'ok' });
-      continue;
-    }
-    if (节点.tier === 5) continue;
-    if (社区节点(节点)) 留下.push({ ...节点, alive: false, edgeStatus: 结果.status || 'failed' });
+    if (结果.status !== 'ok') continue;
+    留下.push({ ...节点, port: 结果.port || 节点.port || 443, alive: true, edgeStatus: 'ok' });
   }
-  const 节点 = 合并去重(留下);
-  return { nodes: 节点, effective: 节点.some(项 => 项.kind !== 'domain' && (项.alive || 社区节点(项))) };
+  const 节点 = 合并去重(留下).filter(稳定可下发);
+  return { nodes: 节点, effective: 节点.some(项 => 项.kind !== 'domain' && 项.alive) };
 }
 
 function 拼接字节(...块) {
@@ -819,21 +812,17 @@ export function 判断握手应答(数据) {
 }
 
 export function 标注保底(列表) {
-  const 四版 = (列表 || []).filter(节点 => 节点 && 节点.kind === 'v4' && 节点.tier !== 5);
+  const 四版 = (列表 || []).filter(节点 => 节点 && 节点.kind === 'v4' && 节点.tier !== 5 && !节点.relay && (节点.pinned || 位于云墙网段(节点.ip)));
   const 保底键 = new Set();
-  for (const 运营商 of 运营商顺序) {
-    const 候选 = 四版.filter(节点 => !节点.pinned && 运营商名(节点) === 运营商).sort(比较优选);
+  for (const 运营商 of ['电信', '移动', '联通']) {
+    const 候选 = 四版.filter(节点 => !节点.pinned && 运营商名(节点) === 运营商 && (Number(节点.failureStreak) || 0) < 2).sort(比较优选);
     if (候选[0]) 保底键.add(节点键(候选[0]));
   }
   return (列表 || []).map(节点 => {
     if (!节点) return 节点;
     if (节点.isp === '入口') return { ...节点, tier: 0 };
     if (节点.pinned) return { ...节点, tier: 0 };
-    if (保底键.has(节点键(节点))) {
-      const 名 = 运营商名(节点);
-      const 前缀 = 名 === '其他' || 名 === '中转' ? '保底' : `保底·${名}`;
-      return { ...节点, tier: 0, isp: 前缀 };
-    }
+    if (保底键.has(节点键(节点))) return { ...节点, tier: 0 };
     if (节点.tier === 0 && 节点.kind !== 'domain') {
       return { ...节点, tier: 2, isp: 节点.isp === '保底' ? '入口IP' : 节点.isp };
     }

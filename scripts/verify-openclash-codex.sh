@@ -20,7 +20,7 @@ def request_json(base, token, path)
 end
 
 all = request_json(base, token, "/proxies").fetch("proxies")
-group_name = ["🧠 Codex智能", "🤖 OpenAI", "🚀 节点选择"].find { |name| all.key?(name) }
+group_name = ["⚡ 自动选择", "🧠 Codex智能", "🤖 OpenAI", "🚀 节点选择"].find { |name| all.key?(name) }
 abort "找不到 Codex 策略组" unless group_name
 group = all.fetch(group_name)
 members = Array(group["all"]).select { |name| all[name].is_a?(Hash) && Array(all[name]["all"]).empty? }

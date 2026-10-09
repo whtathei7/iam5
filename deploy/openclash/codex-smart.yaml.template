@@ -75,26 +75,16 @@ proxy-groups:
     interval: 900
     tolerance: 100
     lazy: true
-  - name: "🚄 Codex大带宽"
-    type: fallback
-    use:
-      - codex-local
-    url: https://chatgpt.com/cdn-cgi/trace
-    expected-status: 200
-    interval: 1800
-    lazy: true
   - name: "🤖 OpenAI"
     type: select
     proxies:
+      - "⚡ 自动选择"
       - "🧠 Codex智能"
-      - "🚄 Codex大带宽"
       - DIRECT
   - name: "🚀 节点选择"
     type: select
     proxies:
       - "⚡ 自动选择"
-      - "🧠 Codex智能"
-      - "🚄 Codex大带宽"
       - DIRECT
 
 rules:
