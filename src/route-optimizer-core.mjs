@@ -507,12 +507,18 @@ export function 挑选自动测速节点(列表, 数量 = 12) {
   const 组 = [...分组.values()];
   const 结果 = [];
   const 已见 = new Set();
+  const 已见线路 = new Set();
   let 轮次 = 0;
   while (结果.length < 上限 && 组.some(节点列 => 节点列.length > 轮次)) {
     for (const 节点列 of 组) {
       const 节点 = 节点列[轮次];
       if (!节点 || 已见.has(节点.name)) continue;
+      const 线路键 = 节点.server
+        ? `${String(节点.server).toLowerCase()}|${节点.port || 443}|${String(节点.sni || 节点.host || '').toLowerCase()}`
+        : `name|${节点.name}`;
+      if (已见线路.has(线路键)) continue;
       已见.add(节点.name);
+      已见线路.add(线路键);
       结果.push(节点);
       if (结果.length >= 上限) break;
     }
