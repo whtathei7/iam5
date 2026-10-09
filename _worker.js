@@ -2227,9 +2227,12 @@ function 构建值节点行(数量值596) {
   }
   if (数量值596.ech) {
     const 加密客户端问候域名590 = 自定义加密客户端问候域名 || 'cloudflare-ech.com';
+/* ROUTE_OPT_START ech-yaml-static */
     行列表595.push(`    ech-opts:`);
     行列表595.push(`      enable: true`);
-    行列表595.push(`      query-server-name: ${处理本地值622(加密客户端问候域名590)}`);
+    if (线路ECH配置) 行列表595.push(`      config: ${处理本地值622(线路ECH配置)}`);
+    else 行列表595.push(`      query-server-name: ${处理本地值622(加密客户端问候域名590)}`);
+/* ROUTE_OPT_END ech-yaml-static */
   }
   return 行列表595.join('\n');
 }
@@ -3943,6 +3946,29 @@ export function 短哈希(文本) {
   return (值 >>> 0).toString(16);
 }
 
+export function 是ECH配置(值) {
+  const 文本 = String(值 || '').trim();
+  if (文本.length < 32 || 文本.length > 4096 || !/^[A-Za-z0-9+/_=-]+$/.test(文本)) return false;
+  try {
+    const 标准 = 文本.replace(/-/g, '+').replace(/_/g, '/').replace(/=+$/, '');
+    const 补齐 = 标准 + '='.repeat((4 - 标准.length % 4) % 4);
+    return atob(补齐).length >= 8;
+  } catch (错误) {
+    return false;
+  }
+}
+
+export function 提取ECH配置(数据) {
+  const 答案 = 数据 && Array.isArray(数据.Answer) ? 数据.Answer : [];
+  for (const 项 of 答案) {
+    const 文本 = typeof 项?.data === 'string' ? 项.data : '';
+    const 匹配 = 文本.match(/(?:^|\s)ech=(?:"([A-Za-z0-9+/_=-]+)"|([A-Za-z0-9+/_=-]+))/i);
+    const 配置 = 匹配 && (匹配[1] || 匹配[2]);
+    if (是ECH配置(配置)) return 配置;
+  }
+  return '';
+}
+
 export function 生成抗阻断路径(节点, 用户 = '') {
   const 标识 = 节点 && (节点.ip || 节点.domain || 节点.server) || '';
   const 端口 = 节点 && 节点.port || 443;
@@ -4079,6 +4105,53 @@ let 线路优化刷新任务 = null;
 let 线路优化刷新键 = '';
 let 线路写入账本 = { day: '', writes: 0, lastAt: 0, hash: '' };
 let 线路入口域名 = '';
+let 线路ECH配置 = '';
+let 线路ECH状态 = 'dns';
+let 线路ECH缓存 = { domain: '', value: '', at: 0 };
+
+async function 查询ECH配置(域名) {
+  const 控制器 = new AbortController();
+  const 定时器 = setTimeout(() => 控制器.abort(), 3500);
+  try {
+    const 地址 = `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(域名)}&type=65`;
+    const 响应 = await fetch(地址, {
+      headers: { Accept: 'application/dns-json' },
+      signal: 控制器.signal
+    });
+    if (!响应.ok) return '';
+    return 提取ECH配置(await 响应.json());
+  } catch (错误) {
+    return '';
+  } finally {
+    clearTimeout(定时器);
+  }
+}
+
+async function 获取线路ECH配置(入口域名) {
+  const 环境配置 = String(当前环境.ECH_CONFIG || 当前环境.echConfig || '').trim();
+  if (是ECH配置(环境配置)) {
+    线路ECH状态 = 'env';
+    return 环境配置;
+  }
+  const 域名 = String(自定义加密客户端问候域名 || 入口域名 || 'cloudflare-ech.com').trim().toLowerCase();
+  const 现在 = Date.now();
+  if (线路ECH缓存.domain === 域名 && 线路ECH缓存.value && 现在 - 线路ECH缓存.at < 60 * 1000) {
+    线路ECH状态 = 'cache';
+    return 线路ECH缓存.value;
+  }
+  const 最新 = await 查询ECH配置(域名) || (域名 === 入口域名 ? '' : await 查询ECH配置(入口域名));
+  if (最新) {
+    线路ECH缓存 = { domain: 域名, value: 最新, at: 现在 };
+    线路ECH状态 = 'static';
+    return 最新;
+  }
+  if (线路ECH缓存.domain === 域名 && 线路ECH缓存.value && 现在 - 线路ECH缓存.at < 6 * 60 * 60 * 1000) {
+    线路ECH状态 = 'stale';
+    return 线路ECH缓存.value;
+  }
+  线路ECH状态 = 'dns';
+  return '';
+}
 
 function 读取备用前置域名() {
   const 原文 = 当前环境.FRONT_DOMAINS || 当前环境.frontDomains || 当前环境.OPT_FRONT_DOMAINS || '';
@@ -4567,13 +4640,17 @@ async function 处理订阅请求(请求507, 用户506, 网址505 = null) {
   }
   const 别名命名器502 = 创建值节点命名器(false);
 
-  // 如果启用了ECH，使用自定义值
+/* ROUTE_OPT_START ech-subscription-static */
+  // 优先由 Worker 获取最新 ECHConfig 并直接下发，避免客户端本地 HTTPS DNS 查询失败。
   let 加密客户端问候配置501 = null;
+  线路ECH配置 = '';
   if (启用加密客户端问候) {
     const 域名系统值500 = 自定义域名系统 || 'https://223.5.5.5/dns-query';
     const 加密客户端问候域名499 = 自定义加密客户端问候域名 || 'cloudflare-ech.com';
-    加密客户端问候配置501 = `${加密客户端问候域名499}+${域名系统值500}`;
+    线路ECH配置 = await 获取线路ECH配置(工作器域名504);
+    加密客户端问候配置501 = 线路ECH配置 || `${加密客户端问候域名499}+${域名系统值500}`;
   }
+/* ROUTE_OPT_END ech-subscription-static */
   async function 添加节点列表来源列表(列表498) {
     if (启用明文) {
       最终链接列表.push(...生成链接列表来源源(列表498, 用户506, 工作器域名504, 加密客户端问候配置501, false, 别名命名器502));
@@ -4785,13 +4862,14 @@ async function 处理订阅请求(请求507, 用户506, 网址505 = null) {
     'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0'
   };
 
+/* ROUTE_OPT_START ech-response-header */
   // 添加ECH状态到响应头
   if (启用加密客户端问候) {
     响应头部列表['X-ECH-Status'] = 'ENABLED';
-    if (加密客户端问候配置501) {
-      响应头部列表['X-ECH-Config-Length'] = String(加密客户端问候配置501.length);
-    }
+    响应头部列表['X-ECH-Mode'] = 线路ECH配置 ? 线路ECH状态 : 'dns';
+    if (线路ECH配置) 响应头部列表['X-ECH-Config-Length'] = String(线路ECH配置.length);
   }
+/* ROUTE_OPT_END ech-response-header */
 /* ROUTE_OPT_START header */
   if (线路优化摘要) 响应头部列表['X-Opt'] = 线路优化摘要;
   return new Response(订阅内容, {
