@@ -152,6 +152,30 @@ export function 是安全优选网址(值) {
   }
 }
 
+export function 解析独立入口配置(值, 当前域名 = '') {
+  const 当前 = String(当前域名 || '').trim().toLowerCase();
+  const 唯一标识 = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  const 结果 = [];
+  const 已见 = new Set();
+  for (const 原项 of String(值 || '').split(/[\n,;]+/)) {
+    const 文本 = 原项.trim();
+    if (!文本) continue;
+    try {
+      const 网址 = new URL(文本);
+      const 域名 = 网址.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+      const 用户 = decodeURIComponent(网址.pathname.split('/').filter(Boolean)[0] || '').toLowerCase();
+      if (网址.protocol !== 'https:' || 地址种类(域名) !== 'domain' || 域名 === 当前 || !唯一标识.test(用户)) continue;
+      const 键 = `${域名}|${用户}`;
+      if (已见.has(键)) continue;
+      已见.add(键);
+      const 标签 = decodeURIComponent(网址.hash.slice(1)).replace(/[\r\n|]/g, '').trim().slice(0, 24);
+      结果.push({ domain: 域名, uuid: 用户, name: 标签 || `独立入口${结果.length + 1}` });
+      if (结果.length >= 2) break;
+    } catch (错误) {}
+  }
+  return 结果;
+}
+
 export function 整理兜底池(值) {
   return String(值 || '')
     .split(/[\n,;]+/)
@@ -358,7 +382,7 @@ export function 解析优选行(行, 配置 = {}) {
   const 地区 = 识别地区(备注);
   const 线路 = 识别线路(备注);
   const 延迟匹配 = 备注.match(/(\d+(?:\.\d+)?)\s*ms/i);
-  const 速度匹配 = 备注.match(/(\d+(?:\.\d+)?)\s*mb(?:ps|\/s)/i);
+  const 速度匹配 = 备注.match(/(\d+(?:\.\d+)?)\s*(?:mb(?:ps|\/s)|m(?=\s|\]|\)|$))/i);
   const 偏向地区 = 配置.prefer === 'region';
   const 名称 = (偏向地区 ? (地区 && 地区.名) || 线路 : 线路 || (地区 && 地区.名)) || 配置.fallbackName || '优选IP';
   return {
@@ -411,6 +435,32 @@ export function 整理电信优选节点(列表, 配置 = {}) {
     })
     .sort(比较优选)
     .slice(0, 上限);
+}
+
+export function 挑选自动测速节点(列表, 数量 = 12) {
+  const 上限 = Math.max(1, Math.min(24, Number(数量) || 12));
+  const 分组 = new Map();
+  for (const 节点 of 列表 || []) {
+    if (!节点 || !节点.name) continue;
+    const 键 = String(节点.sni || 节点.host || 节点.server || 'default').toLowerCase();
+    if (!分组.has(键)) 分组.set(键, []);
+    分组.get(键).push(节点);
+  }
+  const 组 = [...分组.values()];
+  const 结果 = [];
+  const 已见 = new Set();
+  let 轮次 = 0;
+  while (结果.length < 上限 && 组.some(节点列 => 节点列.length > 轮次)) {
+    for (const 节点列 of 组) {
+      const 节点 = 节点列[轮次];
+      if (!节点 || 已见.has(节点.name)) continue;
+      已见.add(节点.name);
+      结果.push(节点);
+      if (结果.length >= 上限) break;
+    }
+    轮次++;
+  }
+  return 结果;
 }
 
 export function 合并去重(列表) {

@@ -37,6 +37,8 @@ import {
   社区节点,
   电信优选源,
   整理电信优选节点,
+  解析独立入口配置,
+  挑选自动测速节点,
   允许访问,
   重置访问账本
 } from '../src/route-optimizer-core.mjs';
@@ -68,6 +70,7 @@ test('BestCF 电信源只收电信标签，并允许专线中转公网地址', (
     'https://raw.githubusercontent.com/love-ztm/cfip/refs/heads/main/best_ips.txt'
   ]);
   const 三网 = 解析优选文本([
+    '162.159.198.1:443#WeTest优选 | 10-09 18:31 | BestCF.pages.dev',
     '104.19.63.96:443#微测优选 | 电信 | LAX | 104.19.63.96',
     '104.17.120.1:443#微测优选 | 移动 | HKG | 104.17.120.1',
     '104.18.20.1:443#微测优选 | 联通 | NRT | 104.18.20.1'
@@ -88,6 +91,30 @@ test('BestCF 电信源只收电信标签，并允许专线中转公网地址', (
   assert.equal(中转[0].relay, true);
   assert.equal(可拨号节点(中转[0]), true);
   assert.equal(中转[1].port, 8443);
+  const 兆数 = 解析优选文本('43.129.217.38:443#CN [高速 by Jz 20M]', { tier: 2, prefer: 'region' });
+  assert.equal(兆数[0].speed, 20);
+});
+
+test('独立入口限制为两个，并让自动测速在不同入口间交错', () => {
+  const 入口 = 解析独立入口配置([
+    'https://backup-a.example.com/11111111-1111-4111-8111-111111111111#备用A',
+    'https://main.example.com/22222222-2222-4222-8222-222222222222#同域跳过',
+    'http://backup-b.example.com/33333333-3333-4333-8333-333333333333#明文跳过',
+    'https://backup-b.example.com/44444444-4444-4444-8444-444444444444#备用B',
+    'https://backup-c.example.com/55555555-5555-4555-8555-555555555555#超过上限'
+  ].join('\n'), 'main.example.com');
+  assert.deepEqual(入口.map(项 => 项.name), ['备用A', '备用B']);
+  const 节点 = [
+    ...Array.from({ length: 8 }, (_, i) => ({ name: `主-${i}`, sni: 'main.example.com' })),
+    ...Array.from({ length: 6 }, (_, i) => ({ name: `备A-${i}`, sni: 'backup-a.example.com' })),
+    ...Array.from({ length: 6 }, (_, i) => ({ name: `备B-${i}`, sni: 'backup-b.example.com' }))
+  ];
+  const 自动 = 挑选自动测速节点(节点, 12);
+  assert.equal(自动.length, 12);
+  assert.deepEqual(自动.slice(0, 6).map(项 => 项.sni), [
+    'main.example.com', 'backup-a.example.com', 'backup-b.example.com',
+    'main.example.com', 'backup-a.example.com', 'backup-b.example.com'
+  ]);
 });
 
 test('保底在前，低延迟优先，IPv6 默认不占名额，数量封顶', () => {
@@ -339,10 +366,20 @@ test('订阅请求会走优选、保底前置和缓存', async () => {
   assert.doesNotMatch(Clash正文, /query-server-name:/);
   assert.match(Clash正文, /path: "?\/assets\/[0-9a-f]+\?ed=2048"?/);
   assert.match(Clash正文, /- name: "♻️ 自动选择"\s*\n\s+type: url-test/);
-  assert.match(Clash正文, /url: http:\/\/www\.gstatic\.com\/generate_204\s*\n\s+interval: 300\s*\n\s+tolerance: 50\s*\n\s+lazy: true/);
+  assert.match(Clash正文, /url: http:\/\/www\.gstatic\.com\/generate_204\s*\n\s+interval: 600\s*\n\s+tolerance: 50\s*\n\s+lazy: true/);
   assert.match(Clash正文, /- name: "🚀 节点选择"\s*\n\s+type: select\s*\n\s+proxies:\s*\n\s+- "♻️ 自动选择"/);
   assert.match(Clash正文, /RULE-SET,gfw,🚀 节点选择/);
   assert.match(Clash正文, /MATCH,🐟 漏网之鱼/);
+  const 独立用户 = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const 独立配置 = await 工人.default.fetch(new Request(`https://example.com/${令牌}/sub?target=clash`), {
+    ...测试环境,
+    INDEPENDENT_ENDPOINTS: `https://backup.example.net/${独立用户}#异地备用`
+  }, { waitUntil() {} });
+  const 独立正文 = await 独立配置.text();
+  assert.match(独立配置.headers.get('X-Opt') || '', /backends=2/);
+  assert.match(独立正文, new RegExp(`uuid: ${独立用户}`));
+  assert.match(独立正文, /servername: "backup\.example\.net"/);
+  assert.match(独立正文, /Host: "backup\.example\.net"/);
   const 自定义 = await 工人.default.fetch(new Request(`https://example.com/${令牌}/sub`), {
     ...测试环境,
     yx: '1.2.3.4:443#自定甲,5.6.7.8:443#自定乙'
