@@ -17,6 +17,13 @@ export const 实测优选源 = [
   'https://bestcf.pages.dev/uouin/all.txt',
   'https://bestcf.pages.dev/cfyes/ipv4.txt'
 ];
+// BestCF 首页列出的中国电信专用源。微测源同时含三网，必须按“电信”标签筛选；
+// 后两个是电信线路实测的非 Cloudflare 网段入口，按社区中转节点处理。
+export const 电信优选源 = [
+  { url: 'https://bestcf.pages.dev/wetest/ipv4.txt', taggedOnly: true, relay: false, maxLines: 40, limit: 12 },
+  { url: 'https://cf.junzhen.qzz.io/best_ips_bj.txt', taggedOnly: false, relay: true, maxLines: 80, limit: 12 },
+  { url: 'https://raw.githubusercontent.com/love-ztm/cfip/refs/heads/main/best_ips.txt', taggedOnly: false, relay: true, maxLines: 40, limit: 8 }
+];
 export const 优选域名源 = 'https://bestcf.pages.dev/domain/all.txt';
 export const 六版优选源 = 'https://bestcf.pages.dev/cfyes/ipv6.txt';
 export const 运营商顺序 = ['移动', '联通', '电信', '多线', '中转', '其他'];
@@ -384,6 +391,26 @@ export function 比较优选(甲, 乙) {
   const 乙延迟 = 乙.latency == null ? 1e9 : 乙.latency;
   if (甲延迟 !== 乙延迟) return 甲延迟 - 乙延迟;
   return (乙.speed || 0) - (甲.speed || 0);
+}
+
+export function 整理电信优选节点(列表, 配置 = {}) {
+  const 只收电信标签 = !!配置.taggedOnly;
+  const 是中转源 = !!配置.relay;
+  const 上限 = Math.max(1, Math.min(40, Number(配置.limit) || 12));
+  return (列表 || [])
+    .filter(节点 => 节点 && 节点.kind === 'v4' && (!只收电信标签 || 运营商名(节点) === '电信'))
+    .map(节点 => {
+      const 外部中转 = 是中转源 && !位于云墙网段(节点.ip);
+      const 地区名 = 节点.region ? 地区中文[节点.region] || 节点.region : '';
+      return {
+        ...节点,
+        isp: 是中转源 ? `电信中转${地区名 ? `·${地区名}` : ''}` : '电信',
+        sourced: true,
+        relay: 外部中转 || !!节点.relay
+      };
+    })
+    .sort(比较优选)
+    .slice(0, 上限);
 }
 
 export function 合并去重(列表) {
