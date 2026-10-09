@@ -1,6 +1,8 @@
+/* ROUTE_OPT_START banner */
 // CFnew - 终端 v3.1
 // 版本: v3.1 
-import { connect as 连接 } from 'cloudflare:sockets';
+// 线路优化方案已启用
+/* ROUTE_OPT_END banner */import { connect as 连接 } from 'cloudflare:sockets';
 const 基础64文本解码器 = new TextDecoder();
 function 解码64(文本) {
   const 二进制 = atob(文本);
@@ -75,12 +77,23 @@ const 配置默认值 = {
   dkby: 'no',
   yxby: '',
   ipv4: 'yes',
-  ipv6: 'yes',
+/* ROUTE_OPT_START defaults */
+  ipv6: 'no',
   ispMobile: 'yes',
   ispUnicom: 'yes',
   ispTelecom: 'yes',
-  jk: 'no'
+  jk: 'no',
+  opt: 'yes',
+  optLimit: '36',
+  optProbe: 'yes',
+  optBalance: 'yes',
+  optAnchor: 'yes',
+  optMerge: 'no',
+  v6policy: 'off',
+  optRegion: 'all',
+  optPool: ''
 };
+/* ROUTE_OPT_END defaults */
 
 function 是否开启值(值, 默认启用 = false) {
   if (值 === undefined || 值 === null || 值 === '') return 默认启用;
@@ -110,17 +123,31 @@ function 整理有效配置(配置) {
     ...配置默认值,
     ...配置
   };
-  ['ev', 'et', 'ex', 'ech', 'ena', 'epd', 'epi', 'egi', 'ipv4', 'ipv6', 'ispMobile', 'ispUnicom', 'ispTelecom', 'jk'].forEach(键 => {
+  /* ROUTE_OPT_START switches */
+['ev', 'et', 'ex', 'ech', 'ena', 'epd', 'epi', 'egi', 'ipv4', 'ipv6', 'ispMobile', 'ispUnicom', 'ispTelecom', 'jk', 'opt', 'optProbe', 'optBalance', 'optAnchor', 'optMerge']
+/* ROUTE_OPT_END switches */.forEach(键 => {
     快照[键] = 归一配置开关(快照[键], 是否开启值(配置默认值[键]));
   });
+/* ROUTE_OPT_START normalize */
   if (快照.ev === 'no' && 快照.et === 'no' && 快照.ex === 'no') {
     快照.ev = 'yes';
   }
   if (快照.ech === 'yes') {
     快照.dkby = 'yes';
   }
+  const 线路选项 = 整理线路选项(快照);
+  快照.opt = 线路选项.enabled ? 'yes' : 'no';
+  快照.optProbe = 线路选项.probe ? 'yes' : 'no';
+  快照.optBalance = 线路选项.balance ? 'yes' : 'no';
+  快照.optAnchor = 线路选项.anchor ? 'yes' : 'no';
+  快照.optMerge = 线路选项.merge ? 'yes' : 'no';
+  快照.optLimit = String(线路选项.limit);
+  快照.v6policy = 线路选项.v6policy;
+  快照.optRegion = 线路选项.region;
+  快照.optPool = 线路选项.pool.join('\n');
   return 快照;
 }
+/* ROUTE_OPT_END normalize */
 
 function 读取环境配置值(环境值, ...名称列表) {
   if (!环境值) return undefined;
@@ -164,8 +191,19 @@ function 获取环境配置快照(环境值 = {}) {
     ispMobile: ['ispMobile', 'ISPMOBILE', 'ISP_MOBILE'],
     ispUnicom: ['ispUnicom', 'ISPUNICOM', 'ISP_UNICOM'],
     ispTelecom: ['ispTelecom', 'ISPTELECOM', 'ISP_TELECOM'],
-    jk: ['jk', 'JK']
+/* ROUTE_OPT_START env */
+    jk: ['jk', 'JK'],
+    opt: ['opt', 'OPT'],
+    optLimit: ['optLimit', 'OPTLIMIT', 'OPT_LIMIT'],
+    optProbe: ['optProbe', 'OPTPROBE', 'OPT_PROBE'],
+    optBalance: ['optBalance', 'OPTBALANCE', 'OPT_BALANCE'],
+    optAnchor: ['optAnchor', 'OPTANCHOR', 'OPT_ANCHOR'],
+    optMerge: ['optMerge', 'OPTMERGE', 'OPT_MERGE'],
+    v6policy: ['v6policy', 'V6POLICY', 'V6_POLICY'],
+    optRegion: ['optRegion', 'OPTREGION', 'OPT_REGION'],
+    optPool: ['optPool', 'OPTPOOL', 'OPT_POOL']
   };
+/* ROUTE_OPT_END env */
   const 快照 = {};
   for (const [键, 名称列表] of Object.entries(映射)) {
     const 值 = 读取环境配置值(环境值, ...名称列表);
@@ -612,9 +650,12 @@ function 解析地址值端口(输入) {
   };
 }
 export default {
-  async fetch(请求735, 本地值734, 本地值733) {
+  /* ROUTE_OPT_START fetch-context */
+async fetch(请求735, 本地值734, 本地值733) {
     try {
-      const 是否网页套接字 = 请求735.headers.get('Upgrade') === atob('d2Vic29ja2V0');
+      当前环境 = 本地值734 || {};
+      执行上下文 = 本地值733 || null;
+/* ROUTE_OPT_END fetch-context */      const 是否网页套接字 = 请求735.headers.get('Upgrade') === atob('d2Vic29ja2V0');
       const 是否值732 = 请求735.method === 'POST';
       const 请求网址731 = new URL(请求735.url);
       const 路径值730 = 请求网址731.pathname.split('/').filter(参数值729 => 参数值729);
@@ -718,8 +759,10 @@ export default {
       启用优选地址 = 获取配置开关值('epi', true, 本地值734.epi || 本地值734.EPI);
       启用仓库优选 = 获取配置开关值('egi', true, 本地值734.egi || 本地值734.EGI);
       启用原生地址 = 获取配置开关值('ena', false, 本地值734.ena || 本地值734.ENA);
+/* ROUTE_OPT_START fetch-apply */
       启用家宽链式 = 获取配置开关值('jk', false, 本地值734.jk || 本地值734.JK);
-      启用加密客户端问候 = 获取配置开关值('ech', false, 本地值734.ech || 本地值734.ECH);
+      应用线路优化开关();
+/* ROUTE_OPT_END fetch-apply */      启用加密客户端问候 = 获取配置开关值('ech', false, 本地值734.ech || 本地值734.ECH);
 
       // 加载自定义DNS和ECH域名配置
       自定义域名系统 = 获取配置文本值('customDNS', 配置默认值.customDNS).trim() || 配置默认值.customDNS;
@@ -2877,8 +2920,745 @@ async function 生成家宽链式值(链接列表) {
   return 头部.concat(节点段, [''], 分组段, [''], 规则段, ['']).join('\n');
 }
 
+/* ROUTE_OPT_START module */
+// 线路优化的纯逻辑。订阅生成时由 _worker.js 调用，单测直接引用本文件。
+// 思路借鉴 CFNext 公开方案：优选池优先、随机补足封顶、测活剔除、保底前置、IPv6 后置、头部轮换。
+// 实现独立，不复制其源码。
+
+export const 内置地区代码 = ['HK', 'TW', 'JP', 'SG', 'US', 'KR'];
+export const 实测优选源 = [
+  'https://bestcf.pages.dev/uouin/all.txt',
+  'https://bestcf.pages.dev/cfyes/ipv4.txt'
+];
+export const 六版优选源 = 'https://bestcf.pages.dev/cfyes/ipv6.txt';
+export const 低延迟网段 = [
+  '104.16.0.0/16',
+  '104.17.0.0/16',
+  '104.18.0.0/16',
+  '104.19.0.0/16',
+  '104.24.0.0/16',
+  '172.64.0.0/16',
+  '162.158.0.0/16'
+];
+
+const 地区中文 = {
+  HK: '香港',
+  TW: '台湾',
+  JP: '日本',
+  SG: '新加坡',
+  US: '美国',
+  KR: '韩国',
+  DE: '德国'
+};
+
+export function 开关值(值, 默认启用 = false) {
+  if (值 === undefined || 值 === null || 值 === '') return 默认启用;
+  if (值 === true || 值 === false) return 值;
+  const 文本 = String(值).trim().toLowerCase();
+  if (文本 === 'yes' || 文本 === 'true' || 文本 === '1' || 文本 === 'on') return true;
+  if (文本 === 'no' || 文本 === 'false' || 文本 === '0' || 文本 === 'off') return false;
+  return 默认启用;
+}
+
+export function 整理数量(值, 默认值 = 36) {
+  const 数字 = parseInt(值, 10);
+  if (!Number.isFinite(数字)) return 默认值;
+  return Math.min(120, Math.max(8, 数字));
+}
+
+export function 整理六版策略(值) {
+  const 文本 = String(值 || 'off').trim().toLowerCase();
+  return ['off', 'backup', 'mix'].includes(文本) ? 文本 : 'off';
+}
+
+export function 整理地区(值) {
+  const 文本 = String(值 || 'all').trim().toUpperCase();
+  if (!文本 || 文本 === 'ALL') return 'all';
+  return ['HK', 'TW', 'JP', 'SG', 'US', 'KR', 'DE'].includes(文本) ? 文本 : 'all';
+}
+
+export function 是安全优选网址(值) {
+  try {
+    const 网址 = new URL(String(值).trim());
+    if (网址.protocol !== 'https:') return false;
+    const 主机 = 网址.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+    if (!主机 || 主机 === 'localhost' || 主机.endsWith('.local') || 主机 === 'metadata.google.internal') return false;
+    if (主机 === '::1' || 主机 === '0.0.0.0') return false;
+    const 四版 = 主机.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+    if (四版) {
+      const 段 = 四版.slice(1).map(Number);
+      if (段.some(节 => 节 > 255)) return false;
+      if (段[0] === 10 || 段[0] === 127 || 段[0] === 0) return false;
+      if (段[0] === 169 && 段[1] === 254) return false;
+      if (段[0] === 192 && 段[1] === 168) return false;
+      if (段[0] === 172 && 段[1] >= 16 && 段[1] <= 31) return false;
+    }
+    return true;
+  } catch (错误) {
+    return false;
+  }
+}
+
+export function 整理兜底池(值) {
+  return String(值 || '')
+    .split(/[\n,;]+/)
+    .map(项 => 项.trim())
+    .filter(是安全优选网址)
+    .slice(0, 6);
+}
+
+export function 整理线路选项(输入 = {}) {
+  const ipv4 = 开关值(输入.ipv4, true);
+  const ipv6 = 开关值(输入.ipv6, false);
+  return {
+    enabled: 开关值(输入.opt, true),
+    limit: 整理数量(输入.optLimit, 36),
+    probe: 开关值(输入.optProbe, true),
+    balance: 开关值(输入.optBalance, true),
+    anchor: 开关值(输入.optAnchor, true),
+    merge: 开关值(输入.optMerge, false),
+    v6policy: 整理六版策略(输入.v6policy),
+    region: 整理地区(输入.optRegion),
+    ipv4: ipv4 || !ipv6,
+    ipv6,
+    mobile: 开关值(输入.ispMobile, true),
+    unicom: 开关值(输入.ispUnicom, true),
+    telecom: 开关值(输入.ispTelecom, true),
+    pool: 整理兜底池(输入.optPool)
+  };
+}
+
+export function 内置地区源(地区) {
+  return `https://bestcf.pages.dev/random-region/${地区}/10.txt`;
+}
+
+export function 地址种类(地址) {
+  const 文本 = String(地址 || '').trim();
+  if (!文本 || 文本.includes('/') || /\s/.test(文本)) return '';
+  if (文本.includes(':')) {
+    if (!/^[0-9a-fA-F:]+$/.test(文本) || !文本.includes(':')) return '';
+    return 'v6';
+  }
+  if (/^(?:\d{1,3}\.){3}\d{1,3}$/.test(文本) && 文本.split('.').every(节 => Number(节) <= 255)) return 'v4';
+  if (/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/i.test(文本)) return 'domain';
+  return '';
+}
+
+export function 节点键(节点) {
+  return `${节点.ip}|${节点.port || 443}`;
+}
+
+function 识别地区(文本) {
+  const 原文 = String(文本 || '');
+  for (const [码, 名称] of Object.entries(地区中文)) {
+    if (原文.includes(名称)) return { 名: 名称, 码 };
+  }
+  const 码表 = { HKG: 'HK', TPE: 'TW', NRT: 'JP', HND: 'JP', KIX: 'JP', SIN: 'SG', ICN: 'KR', FRA: 'DE', HK: 'HK', TW: 'TW', JP: 'JP', SG: 'SG', US: 'US', KR: 'KR', DE: 'DE' };
+  const 匹配 = 原文.toUpperCase().match(/\b(HKG|TPE|NRT|HND|KIX|SIN|ICN|FRA|HK|TW|JP|SG|US|KR|DE)\b/);
+  if (!匹配) return null;
+  const 码 = 码表[匹配[1]];
+  return { 名: 地区中文[码], 码 };
+}
+
+function 识别线路(文本) {
+  const 原文 = String(文本 || '');
+  if (原文.includes('移动')) return '移动';
+  if (原文.includes('联通')) return '联通';
+  if (原文.includes('电信')) return '电信';
+  if (原文.includes('多线') || /\bBGP\b/i.test(原文)) return '多线';
+  return '';
+}
+
+function 切出地址(文本) {
+  let 剩余 = String(文本 || '').trim();
+  if (!剩余) return null;
+  if (剩余.startsWith('[')) {
+    const 右 = 剩余.indexOf(']');
+    if (右 < 0) return null;
+    const 地址 = 剩余.slice(1, 右);
+    const 尾部 = 剩余.slice(右 + 1);
+    if (尾部 && !/^:\d+$/.test(尾部)) return null;
+    return { address: 地址, port: 尾部 ? parseInt(尾部.slice(1), 10) : null };
+  }
+  const 冒号 = 剩余.lastIndexOf(':');
+  if (冒号 > 0 && /^\d+$/.test(剩余.slice(冒号 + 1)) && !剩余.slice(0, 冒号).includes(':')) {
+    return { address: 剩余.slice(0, 冒号), port: parseInt(剩余.slice(冒号 + 1), 10) };
+  }
+  return { address: 剩余, port: null };
+}
+
+export function 解析优选行(行, 配置 = {}) {
+  let 文本 = String(行 || '').replace(/^\uFEFF/, '').trim();
+  if (!文本 || 文本.startsWith('#') || 文本.startsWith('<') || /^https?:\/\//i.test(文本)) return null;
+  let 备注 = '';
+  const 井号 = 文本.indexOf('#');
+  if (井号 >= 0) {
+    备注 = 文本.slice(井号 + 1).trim();
+    文本 = 文本.slice(0, 井号).trim();
+  }
+  const 地址段 = 切出地址(文本);
+  if (!地址段) return null;
+  const 种类 = 地址种类(地址段.address);
+  if (!种类) return null;
+  const 端口 = 地址段.port && 地址段.port > 0 && 地址段.port <= 65535 ? 地址段.port : 443;
+  const 地区 = 识别地区(备注);
+  const 线路 = 识别线路(备注);
+  const 延迟匹配 = 备注.match(/(\d+(?:\.\d+)?)\s*ms/i);
+  const 速度匹配 = 备注.match(/(\d+(?:\.\d+)?)\s*mb\/s/i);
+  const 偏向地区 = 配置.prefer === 'region';
+  const 名称 = (偏向地区 ? (地区 && 地区.名) || 线路 : 线路 || (地区 && 地区.名)) || 配置.fallbackName || '优选IP';
+  return {
+    ip: 地址段.address,
+    port: 端口,
+    isp: 名称,
+    tier: 配置.tier == null ? 1 : 配置.tier,
+    kind: 种类,
+    latency: 延迟匹配 ? Number(延迟匹配[1]) : null,
+    speed: 速度匹配 ? Number(速度匹配[1]) : 0,
+    region: 地区 ? 地区.码 : ''
+  };
+}
+
+export function 解析优选文本(文本, 配置 = {}) {
+  const 上限 = 配置.maxLines || 80;
+  const 结果 = [];
+  const 行列表 = String(文本 || '').split(/\r?\n/);
+  for (const 行 of 行列表) {
+    if (结果.length >= 上限) break;
+    const 节点 = 解析优选行(行, 配置);
+    if (节点) 结果.push(节点);
+  }
+  return 结果;
+}
+
+export function 比较优选(甲, 乙) {
+  if ((甲.tier || 0) !== (乙.tier || 0)) return (甲.tier || 0) - (乙.tier || 0);
+  const 甲延迟 = 甲.latency == null ? 1e9 : 甲.latency;
+  const 乙延迟 = 乙.latency == null ? 1e9 : 乙.latency;
+  if (甲延迟 !== 乙延迟) return 甲延迟 - 乙延迟;
+  return (乙.speed || 0) - (甲.speed || 0);
+}
+
+export function 合并去重(列表) {
+  const 表 = new Map();
+  for (const 节点 of 列表 || []) {
+    if (!节点 || !节点.ip) continue;
+    const 键 = 节点键(节点);
+    const 已有 = 表.get(键);
+    if (!已有 || 比较优选(节点, 已有) < 0) 表.set(键, 节点);
+  }
+  return [...表.values()];
+}
+
+function 允许运营商(节点, 选项) {
+  const 名称 = `${节点.isp || ''} ${节点.region || ''}`;
+  if (名称.includes('移动') && !选项.mobile) return false;
+  if (名称.includes('联通') && !选项.unicom) return false;
+  if (名称.includes('电信') && !选项.telecom) return false;
+  return true;
+}
+
+function 命中地区(节点, 地区) {
+  if (!地区 || 地区 === 'all') return true;
+  if (节点.tier === 0 || 节点.kind === 'domain') return true;
+  if (节点.tier === 1 && !节点.region) return true;
+  return 节点.region === 地区 || (节点.isp || '').includes(地区中文[地区] || 地区);
+}
+
+export function 筛选优选(列表, 选项) {
+  const 四版开启 = 选项.ipv4 || !选项.ipv6;
+  return (列表 || []).filter(节点 => {
+    if (!节点 || !节点.kind) return false;
+    if (节点.kind === 'v6' && (!选项.ipv6 || 选项.v6policy === 'off') && 四版开启) return false;
+    if (节点.kind === 'v4' && !四版开启 && 选项.ipv6) return false;
+    if (!允许运营商(节点, 选项)) return false;
+    if (!命中地区(节点, 选项.region)) return false;
+    return true;
+  });
+}
+
+export function 挑选测活样本(列表, 上限 = 24) {
+  const 保底 = (列表 || []).filter(节点 => 节点.tier === 0 && 节点.kind !== 'domain');
+  const 其余 = (列表 || []).filter(节点 => 节点.tier !== 0 && 节点.kind !== 'domain').sort(比较优选);
+  const 选出 = [];
+  const 已见 = new Set();
+  const 放入 = 节点 => {
+    if (选出.length >= 上限) return;
+    const 键 = 节点键(节点);
+    if (已见.has(键)) return;
+    已见.add(键);
+    选出.push(节点);
+  };
+  保底.forEach(放入);
+  const 按组 = new Map();
+  for (const 节点 of 其余) {
+    const 组 = 节点.region || 节点.isp || '其他';
+    if (!按组.has(组)) 按组.set(组, []);
+    按组.get(组).push(节点);
+  }
+  const 组列表 = [...按组.values()];
+  let 轮次 = 0;
+  while (选出.length < 上限 && 组列表.some(组 => 组.length > 轮次)) {
+    for (const 组 of 组列表) {
+      if (选出.length >= 上限) break;
+      if (组[轮次]) 放入(组[轮次]);
+    }
+    轮次++;
+  }
+  return 选出;
+}
+
+export function 应用测活结果(列表, 存活键, 已探测键, 选项) {
+  if (!选项.probe) return 列表;
+  const 存活 = new Set(存活键 || []);
+  const 已探测 = new Set(已探测键 || []);
+  if (!已探测.size) return 列表;
+  const 活着 = (列表 || []).filter(节点 => 存活.has(节点键(节点)));
+  if (!活着.length) return 列表;
+  if (活着.length >= Math.min(8, 选项.limit || 8)) return 活着;
+  const 未测 = (列表 || []).filter(节点 => !已探测.has(节点键(节点)));
+  return 活着.concat(未测);
+}
+
+export function 轮换序列(列表, 现在 = Date.now(), 窗口 = 8, 间隔毫秒 = 300000) {
+  if (!列表 || 列表.length <= 1) return (列表 || []).slice();
+  const 跨度 = Math.min(窗口, 列表.length);
+  const 偏移 = Math.floor(现在 / 间隔毫秒) % 跨度;
+  if (!偏移) return 列表.slice();
+  return 列表.slice(偏移).concat(列表.slice(0, 偏移));
+}
+
+export function 编排优选节点(列表, 选项, 现在 = Date.now()) {
+  const 四版开启 = 选项.ipv4 || !选项.ipv6;
+  const 筛选 = 筛选优选(合并去重(列表), 选项);
+  const 保底 = 筛选.filter(节点 => 节点.tier === 0 && 节点.kind !== 'domain');
+  const 域名 = 筛选.filter(节点 => 节点.kind === 'domain');
+  const 四版 = 筛选.filter(节点 => 节点.kind === 'v4' && 节点.tier !== 0).sort(比较优选);
+  const 六版 = 筛选.filter(节点 => 节点.kind === 'v6').sort(比较优选);
+  const 保底序 = 选项.balance ? 轮换序列(保底, 现在, 保底.length, 300000) : 保底;
+  const 四版序 = 选项.balance ? 轮换序列(四版, 现在, Math.min(8, 四版.length), 300000) : 四版;
+  let 主体;
+  if (!四版开启 && 选项.ipv6) {
+    主体 = 六版.concat(域名);
+  } else if (!选项.ipv6 || 选项.v6policy === 'off') {
+    主体 = 保底序.concat(四版序, 域名);
+  } else if (选项.v6policy === 'mix') {
+    const 混合 = [];
+    const 次数 = Math.max(四版序.length, 六版.length);
+    for (let 索引 = 0; 索引 < 次数; 索引++) {
+      if (四版序[索引]) 混合.push(四版序[索引]);
+      if (六版[索引]) 混合.push(六版[索引]);
+    }
+    主体 = 保底序.concat(混合, 域名);
+  } else {
+    const 限额 = Math.max(1, Math.floor((选项.limit || 36) * 0.15));
+    主体 = 保底序.concat(四版序, 域名, 六版.slice(0, 限额));
+  }
+  return 主体.slice(0, 选项.limit || 36);
+}
+
+export function 生成保底节点(地址列表) {
+  return (地址列表 || []).filter(Boolean).map(地址 => ({
+    ip: String(地址).trim(),
+    port: 443,
+    isp: '保底',
+    tier: 0,
+    kind: 'v4',
+    latency: null,
+    speed: 0,
+    region: ''
+  }));
+}
+
+function 网段数值(地址) {
+  return String(地址).split('.').reduce((值, 节) => ((值 << 8) + Number(节)) >>> 0, 0);
+}
+
+export function 地址位于网段(地址, 网段) {
+  const [基址, 掩码文本] = 网段.split('/');
+  const 掩码 = Number(掩码文本);
+  const 位 = 掩码 === 0 ? 0 : (0xffffffff << (32 - 掩码)) >>> 0;
+  return (网段数值(地址) & 位) === (网段数值(基址) & 位);
+}
+
+export function 随机地址来自网段(网段, 随机 = Math.random) {
+  const [基址, 掩码文本] = 网段.split('/');
+  const 掩码 = Number(掩码文本);
+  const 容量 = 2 ** (32 - 掩码);
+  const 偏移 = Math.floor(随机() * Math.max(1, 容量 - 2)) + 1;
+  const 地址值 = (网段数值(基址) + 偏移) >>> 0;
+  return [24, 16, 8, 0].map(位移 => (地址值 >>> 位移) & 255).join('.');
+}
+
+export function 随机补足节点(数量, 随机 = Math.random) {
+  const 结果 = [];
+  const 已见 = new Set();
+  let 保护 = 0;
+  while (结果.length < 数量 && 保护 < 数量 * 8) {
+    保护++;
+    const 网段 = 低延迟网段[Math.floor(随机() * 低延迟网段.length)];
+    const ip = 随机地址来自网段(网段, 随机);
+    if (已见.has(ip) || !地址位于网段(ip, 网段)) continue;
+    已见.add(ip);
+    结果.push({ ip, port: 443, isp: '随机补足', tier: 5, kind: 'v4', latency: null, speed: 0, region: '' });
+  }
+  return 结果;
+}
+
+export function 短哈希(文本) {
+  let 值 = 2166136261;
+  const 串 = String(文本 || '');
+  for (let 索引 = 0; 索引 < 串.length; 索引++) {
+    值 ^= 串.charCodeAt(索引);
+    值 = Math.imul(值, 16777619);
+  }
+  return (值 >>> 0).toString(16);
+}
+
+export function 并发映射(列表, 并发, 任务) {
+  const 结果 = new Array(列表.length);
+  let 游标 = 0;
+  const 工人 = async () => {
+    for (;;) {
+      const 索引 = 游标++;
+      if (索引 >= 列表.length) return;
+      结果[索引] = await 任务(列表[索引], 索引);
+    }
+  };
+  const 人数 = Math.max(1, Math.min(并发 || 1, 列表.length || 1));
+  return Promise.all(Array.from({ length: 列表.length ? 人数 : 0 }, () => 工人())).then(() => 结果);
+}
+
+let 当前环境 = {};
+let 执行上下文 = null;
+let 线路优化摘要 = 'off';
+let 启用线路优化 = true;
+let 线路优化数量 = 36;
+let 启用线路测活 = true;
+let 启用线路均衡 = true;
+let 启用保底前置 = true;
+let 启用优选合并 = false;
+let 六版下发策略 = 'off';
+let 线路优选地区 = 'all';
+let 线路兜底池 = '';
+const 线路优化新鲜毫秒 = 30 * 60 * 1000;
+const 线路优化保留毫秒 = 6 * 60 * 60 * 1000;
+let 线路优化内存 = null;
+let 线路优化刷新任务 = null;
+let 线路优化刷新键 = '';
+
+function 应用线路优化开关() {
+  const 线路 = 整理线路选项(获取有效配置快照(当前环境));
+  启用线路优化 = 线路.enabled;
+  线路优化数量 = 线路.limit;
+  启用线路测活 = 线路.probe;
+  启用线路均衡 = 线路.balance;
+  启用保底前置 = 线路.anchor;
+  启用优选合并 = 线路.merge;
+  六版下发策略 = 线路.v6policy;
+  线路优选地区 = 线路.region;
+  线路兜底池 = 线路.pool.join('\n');
+}
+
+function 读取当前线路选项() {
+  return 整理线路选项({
+    opt: 启用线路优化 ? 'yes' : 'no',
+    optLimit: 线路优化数量,
+    optProbe: 启用线路测活 ? 'yes' : 'no',
+    optBalance: 启用线路均衡 ? 'yes' : 'no',
+    optAnchor: 启用保底前置 ? 'yes' : 'no',
+    optMerge: 启用优选合并 ? 'yes' : 'no',
+    v6policy: 六版下发策略,
+    optRegion: 线路优选地区,
+    optPool: 线路兜底池,
+    ipv4: 获取配置值('ipv4', 'yes'),
+    ipv6: 获取配置值('ipv6', 'no'),
+    ispMobile: 获取配置值('ispMobile', 'yes'),
+    ispUnicom: 获取配置值('ispUnicom', 'yes'),
+    ispTelecom: 获取配置值('ispTelecom', 'yes')
+  });
+}
+
+function 线路缓存键(选项, 自定义摘要) {
+  return [
+    选项.region,
+    选项.mobile ? 1 : 0,
+    选项.unicom ? 1 : 0,
+    选项.telecom ? 1 : 0,
+    选项.v6policy,
+    选项.ipv6 ? 1 : 0,
+    选项.anchor ? 1 : 0,
+    选项.probe ? 1 : 0,
+    选项.pool.join(','),
+    自定义摘要
+  ].join('|');
+}
+
+async function 读取线路缓存(键) {
+  const 现在 = Date.now();
+  if (线路优化内存 && 线路优化内存.key === 键) {
+    const 年龄 = 现在 - 线路优化内存.at;
+    if (年龄 < 线路优化保留毫秒) return { nodes: 线路优化内存.nodes, fresh: 年龄 < 线路优化新鲜毫秒 };
+  }
+  if (!键值存储) return null;
+  try {
+    const 原文 = await 键值存储.get('opt_pool');
+    if (!原文) return null;
+    const 数据 = JSON.parse(原文);
+    if (!数据 || 数据.key !== 键 || !Array.isArray(数据.nodes)) return null;
+    线路优化内存 = { key: 键, at: 数据.at || 0, nodes: 数据.nodes };
+    const 年龄 = 现在 - 线路优化内存.at;
+    if (年龄 >= 线路优化保留毫秒) return null;
+    return { nodes: 数据.nodes, fresh: 年龄 < 线路优化新鲜毫秒 };
+  } catch (错误) {
+    return null;
+  }
+}
+
+async function 写入线路缓存(键, 节点) {
+  线路优化内存 = { key: 键, at: Date.now(), nodes: 节点 };
+  if (!键值存储) return;
+  try {
+    await 键值存储.put('opt_pool', JSON.stringify(线路优化内存), { expirationTtl: 21600 });
+  } catch (错误) {}
+}
+
+async function 拉取优选文本(网址) {
+  const 控制器 = new AbortController();
+  const 定时器 = setTimeout(() => 控制器.abort(), 4000);
+  try {
+    const 响应 = await fetch(网址, {
+      signal: 控制器.signal,
+      headers: { 'User-Agent': 'Mozilla/5.0' }
+    });
+    if (!响应.ok) return '';
+    const 文本 = await 响应.text();
+    if (!文本 || /<!doctype html|<html/i.test(文本)) return '';
+    return 文本;
+  } catch (错误) {
+    return '';
+  } finally {
+    clearTimeout(定时器);
+  }
+}
+
+async function 拉取并解析(网址, 配置) {
+  const 文本 = await 拉取优选文本(网址);
+  if (!文本) return [];
+  return 解析优选文本(文本, 配置);
+}
+
+async function 探测套接字可达(主机, 端口, 超时毫秒) {
+  let 套接字 = null;
+  let 定时器 = null;
+  try {
+    套接字 = 连接({ hostname: 主机, port: Number(端口) || 443 });
+    const 超时 = new Promise(完成 => {
+      定时器 = setTimeout(() => 完成(false), 超时毫秒);
+    });
+    const 成功 = await Promise.race([
+      套接字.opened.then(() => true).catch(() => false),
+      超时
+    ]);
+    return 成功 === true;
+  } catch (错误) {
+    return false;
+  } finally {
+    if (定时器) clearTimeout(定时器);
+    try {
+      if (套接字) 套接字.close();
+    } catch (忽略) {}
+  }
+}
+
+async function 测活候选(候选, 选项) {
+  if (!选项.probe) return 候选;
+  const 样本 = 挑选测活样本(候选, 24);
+  if (!样本.length) return 候选;
+  const 探测键 = 样本.map(节点键);
+  const 结果 = await 并发映射(样本, 4, async 节点 => {
+    if (节点.kind === 'domain') return '';
+    const 通 = await 探测套接字可达(节点.ip, 节点.port || 443, 1000);
+    return 通 ? 节点键(节点) : '';
+  });
+  return 应用测活结果(候选, 结果.filter(Boolean), 探测键, 选项);
+}
+
+async function 域名仍可解析(域名) {
+  const 控制器 = new AbortController();
+  const 定时器 = setTimeout(() => 控制器.abort(), 2500);
+  try {
+    const 响应 = await fetch(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(域名)}&type=A`, {
+      signal: 控制器.signal,
+      headers: { accept: 'application/dns-json' }
+    });
+    if (!响应.ok) return true;
+    const 数据 = await 响应.json();
+    if (数据.Status !== 0) return false;
+    return Array.isArray(数据.Answer) && 数据.Answer.length > 0;
+  } catch (错误) {
+    return true;
+  } finally {
+    clearTimeout(定时器);
+  }
+}
+
+async function 选取优选域名(数量) {
+  const 候选 = 直连域名列表.map(项 => 项.domain).filter(Boolean).slice(0, 数量 + 4);
+  const 结果 = await Promise.all(候选.map(async 域名 => (await 域名仍可解析(域名)) ? 域名 : ''));
+  return 结果.filter(Boolean).slice(0, 数量).map(域名 => ({
+    ip: 域名,
+    port: 443,
+    isp: '优选域名',
+    tier: 4,
+    kind: 'domain',
+    latency: null,
+    speed: 0,
+    region: ''
+  }));
+}
+
+function 自定义转节点() {
+  const 地址 = 自定义优选地址列表.map(项 => ({
+    ip: 项.ip,
+    port: 项.port || 443,
+    isp: 项.isp || '自定义优选',
+    tier: 1,
+    kind: 地址种类(项.ip),
+    latency: null,
+    speed: 0,
+    region: ''
+  }));
+  const 域名 = 自定义优选域名列表.map(项 => ({
+    ip: 项.domain,
+    port: 项.port || 443,
+    isp: 项.name || '优选域名',
+    tier: 1,
+    kind: 'domain',
+    latency: null,
+    speed: 0,
+    region: ''
+  }));
+  return 地址.concat(域名).filter(项 => 项.kind);
+}
+
+async function 读取仓库优选节点() {
+  try {
+    const 列表 = await 获取值解析新地址列表();
+    return (列表 || []).slice(0, 30).map(项 => ({
+      ip: 项.ip,
+      port: 项.port || 443,
+      isp: 项.name || '优选IP',
+      tier: 1,
+      kind: 地址种类(项.ip),
+      latency: null,
+      speed: 0,
+      region: ''
+    })).filter(项 => 项.kind);
+  } catch (错误) {
+    return [];
+  }
+}
+
+async function 拉取远程优选(选项) {
+  const 任务 = [];
+  if (启用优选地址) {
+    任务.push(拉取并解析(实测优选源[0], { tier: 1, fallbackName: '优选IP', prefer: 'isp', maxLines: 80 }).then(列表 => 列表.sort(比较优选).slice(0, 16)));
+    任务.push(拉取并解析(实测优选源[1], { tier: 1, fallbackName: '优选IP', prefer: 'isp', maxLines: 60 }).then(列表 => 列表.sort(比较优选).slice(0, 12)));
+    const 地区网址 = 选项.pool.length ? 选项.pool : (选项.region === 'all' ? 内置地区代码 : [选项.region]).map(内置地区源);
+    for (const 网址 of 地区网址) {
+      任务.push(拉取并解析(网址, { tier: 2, fallbackName: '优选IP', prefer: 'region', maxLines: 20 }).then(列表 => 列表.slice(0, 6)));
+    }
+    if (选项.v6policy !== 'off' && 选项.ipv6) {
+      任务.push(拉取并解析(六版优选源, { tier: 3, fallbackName: 'IPv6优选', prefer: 'isp', maxLines: 30 }).then(列表 => 列表.filter(项 => 项.kind === 'v6').slice(0, 8)));
+    }
+  }
+  if (启用仓库优选 && 优选地址源) 任务.push(读取仓库优选节点());
+  const 结算 = await Promise.allSettled(任务);
+  let 节点 = [];
+  for (const 项 of 结算) {
+    if (项.status === 'fulfilled' && Array.isArray(项.value)) 节点 = 节点.concat(项.value);
+  }
+  const 质量 = 节点.filter(项 => 项.kind === 'v4' && 项.tier <= 2).length;
+  if (启用优选地址 && 质量 < 8) {
+    节点 = 节点.concat(随机补足节点(Math.max(4, Math.round(选项.limit * 0.2))));
+    if (质量 < 5) {
+      try {
+        const 旧列表 = await 获取值地址列表();
+        节点 = 节点.concat((旧列表 || []).map(项 => ({
+          ip: 项.ip,
+          port: 443,
+          isp: 项.isp || '优选IP',
+          tier: 1,
+          kind: 地址种类(项.ip),
+          latency: null,
+          speed: 0,
+          region: ''
+        })).filter(项 => 项.kind));
+      } catch (错误) {}
+    }
+  }
+  return 合并去重(节点);
+}
+
+async function 刷新线路候选(键, 选项, 本地候选, 独占) {
+  if (线路优化刷新任务 && 线路优化刷新键 === 键) return 线路优化刷新任务;
+  线路优化刷新键 = 键;
+  线路优化刷新任务 = (async () => {
+    let 远程 = [];
+    if (!独占 && (启用优选地址 || (启用仓库优选 && 优选地址源))) 远程 = await 拉取远程优选(选项);
+    let 候选 = 本地候选.concat(远程);
+    if (启用优选域名 && !独占) 候选 = 候选.concat(await 选取优选域名(4));
+    候选 = 筛选优选(合并去重(候选), 选项);
+    候选 = await 测活候选(候选, 选项);
+    if (候选.length) await 写入线路缓存(键, 候选);
+    return 候选;
+  })().finally(() => {
+    if (线路优化刷新键 === 键) 线路优化刷新任务 = null;
+  });
+  return 线路优化刷新任务;
+}
+
+async function 组装线路优化节点() {
+  const 选项 = 读取当前线路选项();
+  const 有自定义 = 自定义优选地址列表.length > 0 || 自定义优选域名列表.length > 0;
+  const 独占 = 有自定义 && !选项.merge;
+  const 本地 = [];
+  if (选项.anchor) 本地.push(...生成保底节点(官方直连地址));
+  if (有自定义) 本地.push(...自定义转节点());
+  const 摘要 = 短哈希(JSON.stringify({
+    本地: 本地.map(节点键),
+    独占,
+    域名: 启用优选域名 && !独占,
+    地址: 启用优选地址 && !独占,
+    仓库: 启用仓库优选 && !!优选地址源 && !独占,
+    源: 优选地址源 || ''
+  }));
+  const 键 = 线路缓存键(选项, 摘要);
+  const 缓存 = await 读取线路缓存(键);
+  let 候选 = [];
+  let 缓存状态 = 'miss';
+  if (缓存 && 缓存.fresh) {
+    候选 = 缓存.nodes;
+    缓存状态 = 'fresh';
+  } else if (缓存 && 缓存.nodes.length) {
+    候选 = 缓存.nodes;
+    缓存状态 = 'stale';
+    const 刷新 = 刷新线路候选(键, 选项, 本地, 独占).catch(() => []);
+    if (执行上下文 && typeof 执行上下文.waitUntil === 'function') 执行上下文.waitUntil(刷新);
+  } else {
+    候选 = await 刷新线路候选(键, 选项, 本地, 独占);
+    缓存状态 = 候选.length ? 'miss' : 'empty';
+    if (!候选.length) 候选 = 筛选优选(合并去重(本地), 选项);
+  }
+  const 最终 = 编排优选节点(候选, 选项);
+  const 池内 = 候选.filter(项 => 项.kind !== 'domain').length;
+  线路优化摘要 = `on;count=${最终.length};pool=${池内};cache=${缓存状态}`;
+  return 最终;
+}
+
 async function 处理订阅请求(请求507, 用户506, 网址505 = null) {
-  if (!网址505) 网址505 = new URL(请求507.url);
+/* ROUTE_OPT_END module */  if (!网址505) 网址505 = new URL(请求507.url);
   const 最终链接列表 = [];
   const 工作器域名504 = 网址505.hostname;
   const 目标503 = 网址505.searchParams.get('target') || 'base64';
@@ -2945,79 +3725,101 @@ async function 处理订阅请求(请求507, 用户506, 网址505 = null) {
       }
     }
   }
-  const 是否有自定义优选 = 自定义优选地址列表.length > 0 || 自定义优选域名列表.length > 0;
-  if (禁用优选) {} else if (是否有自定义优选) {
-    if (自定义优选地址列表.length > 0 && 启用优选地址) {
-      await 添加节点列表来源列表(自定义优选地址列表);
-    }
-    if (自定义优选域名列表.length > 0 && 启用优选域名) {
-      const 自定义域名列表 = 自定义优选域名列表.map(丁值492 => ({
-        ip: 丁值492.domain,
-        isp: 丁值492.name || 丁值492.domain
-      }));
-      await 添加节点列表来源列表(自定义域名列表);
+/* ROUTE_OPT_START subscribe */
+  let 已写入优化节点 = false;
+  if (!禁用优选 && 启用线路优化) {
+    try {
+      const 优化节点 = await 组装线路优化节点();
+      if (优化节点.length > 0) {
+        await 添加节点列表来源列表(优化节点);
+        已写入优化节点 = true;
+      } else {
+        线路优化摘要 = 'fallback';
+      }
+    } catch (优化错误) {
+      线路优化摘要 = 'fallback';
     }
   } else {
-    if (启用优选域名) {
-      const 域名列表 = 直连域名列表.map(丁值491 => ({
-        ip: 丁值491.domain,
-        isp: 丁值491.name || 丁值491.domain
-      }));
-      await 添加节点列表来源列表(域名列表);
-    }
-    if (启用优选地址) {
-      if (!优选地址源) {
-        try {
-          const 值地址列表490 = await 获取值地址列表();
-          if (值地址列表490.length > 0) {
-            await 添加节点列表来源列表(值地址列表490);
+    线路优化摘要 = 'off';
+  }
+  if (!已写入优化节点) {
+/* ROUTE_OPT_LEGACY_START */
+    const 是否有自定义优选 = 自定义优选地址列表.length > 0 || 自定义优选域名列表.length > 0;
+    if (禁用优选) {} else if (是否有自定义优选) {
+      if (自定义优选地址列表.length > 0 && 启用优选地址) {
+        await 添加节点列表来源列表(自定义优选地址列表);
+      }
+      if (自定义优选域名列表.length > 0 && 启用优选域名) {
+        const 自定义域名列表 = 自定义优选域名列表.map(丁值492 => ({
+          ip: 丁值492.domain,
+          isp: 丁值492.name || 丁值492.domain
+        }));
+        await 添加节点列表来源列表(自定义域名列表);
+      }
+    } else {
+      if (启用优选域名) {
+        const 域名列表 = 直连域名列表.map(丁值491 => ({
+          ip: 丁值491.domain,
+          isp: 丁值491.name || 丁值491.domain
+        }));
+        await 添加节点列表来源列表(域名列表);
+      }
+      if (启用优选地址) {
+        if (!优选地址源) {
+          try {
+            const 值地址列表490 = await 获取值地址列表();
+            if (值地址列表490.length > 0) {
+              await 添加节点列表来源列表(值地址列表490);
+            }
+          } catch (错误489) {
+            if (!当前工作器地区) {
+              当前工作器地区 = 'CF';
+            }
+            const 值备用地址488 = await 获取值备用地址(当前工作器地区);
+            if (值备用地址488) {
+              回退地址 = 值备用地址488.domain + ':' + 值备用地址488.port;
+              const 备用列表487 = [{
+                ip: 值备用地址488.domain,
+                isp: 解码64('UHJveHlJUC0=') + 当前工作器地区
+              }];
+              await 添加节点列表来源列表(备用列表487);
+            }
           }
-        } catch (错误489) {
+        }
+      }
+      if (启用仓库优选) {
+        try {
+          const 新地址列表 = await 获取值解析新地址列表();
+          if (新地址列表.length > 0) {
+            if (启用明文) {
+              最终链接列表.push(...生成链接列表来源新地址列表(新地址列表, 用户506, 工作器域名504, 加密客户端问候配置501, false, 别名命名器502));
+            }
+            if (启用木马) {
+              最终链接列表.push(...(await 生成木马链接列表来源新地址列表(新地址列表, 用户506, 工作器域名504, 加密客户端问候配置501, false, 别名命名器502)));
+            }
+            if (启用扩展传输) {
+              最终链接列表.push(...生成扩展超文本链接列表来源源(新地址列表, 用户506, 工作器域名504, 加密客户端问候配置501, false, 别名命名器502));
+            }
+          }
+        } catch (错误486) {
           if (!当前工作器地区) {
             当前工作器地区 = 'CF';
           }
-          const 值备用地址488 = await 获取值备用地址(当前工作器地区);
-          if (值备用地址488) {
-            回退地址 = 值备用地址488.domain + ':' + 值备用地址488.port;
-            const 备用列表487 = [{
-              ip: 值备用地址488.domain,
+          const 值备用地址485 = await 获取值备用地址(当前工作器地区);
+          if (值备用地址485) {
+            回退地址 = 值备用地址485.domain + ':' + 值备用地址485.port;
+            const 备用列表 = [{
+              ip: 值备用地址485.domain,
               isp: 解码64('UHJveHlJUC0=') + 当前工作器地区
             }];
-            await 添加节点列表来源列表(备用列表487);
+            await 添加节点列表来源列表(备用列表);
           }
         }
       }
     }
-    if (启用仓库优选) {
-      try {
-        const 新地址列表 = await 获取值解析新地址列表();
-        if (新地址列表.length > 0) {
-          if (启用明文) {
-            最终链接列表.push(...生成链接列表来源新地址列表(新地址列表, 用户506, 工作器域名504, 加密客户端问候配置501, false, 别名命名器502));
-          }
-          if (启用木马) {
-            最终链接列表.push(...(await 生成木马链接列表来源新地址列表(新地址列表, 用户506, 工作器域名504, 加密客户端问候配置501, false, 别名命名器502)));
-          }
-          if (启用扩展传输) {
-            最终链接列表.push(...生成扩展超文本链接列表来源源(新地址列表, 用户506, 工作器域名504, 加密客户端问候配置501, false, 别名命名器502));
-          }
-        }
-      } catch (错误486) {
-        if (!当前工作器地区) {
-          当前工作器地区 = 'CF';
-        }
-        const 值备用地址485 = await 获取值备用地址(当前工作器地区);
-        if (值备用地址485) {
-          回退地址 = 值备用地址485.domain + ':' + 值备用地址485.port;
-          const 备用列表 = [{
-            ip: 值备用地址485.domain,
-            isp: 解码64('UHJveHlJUC0=') + 当前工作器地区
-          }];
-          await 添加节点列表来源列表(备用列表);
-        }
-      }
-    }
+/* ROUTE_OPT_LEGACY_END */
   }
+/* ROUTE_OPT_END subscribe */
   if (最终链接列表.length === 0) {
     const 错误备注 = "所有节点获取失败";
     const 协议484 = atob('dmxlc3M=');
@@ -3093,8 +3895,10 @@ async function 处理订阅请求(请求507, 用户506, 网址505 = null) {
       响应头部列表['X-ECH-Config-Length'] = String(加密客户端问候配置501.length);
     }
   }
+/* ROUTE_OPT_START header */
+  if (线路优化摘要) 响应头部列表['X-Opt'] = 线路优化摘要;
   return new Response(订阅内容, {
-    headers: 响应头部列表
+/* ROUTE_OPT_END header */    headers: 响应头部列表
   });
 }
 function 生成链接列表来源源(列表482, 用户481, 工作器域名480, 加密客户端问候配置479 = null, 跳过编号478 = false, 别名命名器477 = null) {
@@ -5795,8 +6599,68 @@ async function 处理订阅值(请求241, 用户240 = null) {
                             </div>
                         </div>
                         <div style="margin-bottom: 15px;">
-                                <label style="display: block; margin-bottom: 8px; color: #00f0ff; font-weight: bold; text-shadow: 0 0 3px #00f0ff;">优选IP筛选设置</label>
+/* ROUTE_OPT_START panel */
+                        <div style="margin-bottom: 15px;">
+                                <label style="display: block; margin-bottom: 8px; color: #00f0ff; font-weight: bold; text-shadow: 0 0 3px #00f0ff;">线路优化</label>
                             <div style="padding: 15px; background: rgba(15, 3, 40, 0.6); border: 1px solid #00f0ff; border-radius: 5px;">
+                                <label style="display: inline-flex; align-items: center; cursor: pointer; color: #00f0ff; margin-bottom: 8px;">
+                                    <input type="checkbox" id="optEnabled" checked style="margin-right: 8px; width: 18px; height: 18px; cursor: pointer;">
+                                    <span style="font-size: 1.05rem;">启用线路优化</span>
+                                </label>
+                                <div style="display: flex; flex-wrap: wrap; gap: 14px; margin: 8px 0 12px;">
+                                    <label style="display: inline-flex; align-items: center; cursor: pointer; color: #00f0ff;">
+                                        <input type="checkbox" id="optAnchor" checked style="margin-right: 8px; width: 18px; height: 18px; cursor: pointer;">
+                                        <span>保底节点前置</span>
+                                    </label>
+                                    <label style="display: inline-flex; align-items: center; cursor: pointer; color: #00f0ff;">
+                                        <input type="checkbox" id="optProbe" checked style="margin-right: 8px; width: 18px; height: 18px; cursor: pointer;">
+                                        <span>下发前测活</span>
+                                    </label>
+                                    <label style="display: inline-flex; align-items: center; cursor: pointer; color: #00f0ff;">
+                                        <input type="checkbox" id="optBalance" checked style="margin-right: 8px; width: 18px; height: 18px; cursor: pointer;">
+                                        <span>头部轮换</span>
+                                    </label>
+                                    <label style="display: inline-flex; align-items: center; cursor: pointer; color: #00f0ff;">
+                                        <input type="checkbox" id="optMerge" style="margin-right: 8px; width: 18px; height: 18px; cursor: pointer;">
+                                        <span>自定义节点合并默认池</span>
+                                    </label>
+                                </div>
+                                <div style="display: flex; flex-wrap: wrap; gap: 12px;">
+                                    <div style="min-width: 120px; flex: 1;">
+                                        <label style="display: block; margin-bottom: 6px; color: #00f0ff;">下发数量</label>
+                                        <input type="number" id="optLimit" value="36" min="8" max="120" style="width: 100%; padding: 10px; background: rgba(0, 0, 0, 0.8); border: 1px solid #00f0ff; color: #00f0ff; font-family: 'Courier New', monospace; font-size: 13px;">
+                                    </div>
+                                    <div style="min-width: 160px; flex: 1;">
+                                        <label style="display: block; margin-bottom: 6px; color: #00f0ff;">IPv6 策略</label>
+                                        <select id="v6policy" style="width: 100%; padding: 10px; background: rgba(0, 0, 0, 0.8); border: 1px solid #00f0ff; color: #00f0ff; font-family: 'Courier New', monospace; font-size: 13px;">
+                                            <option value="off">不下发</option>
+                                            <option value="backup">仅备胎</option>
+                                            <option value="mix">等权混合</option>
+                                        </select>
+                                    </div>
+                                    <div style="min-width: 140px; flex: 1;">
+                                        <label style="display: block; margin-bottom: 6px; color: #00f0ff;">地区优选</label>
+                                        <select id="optRegion" style="width: 100%; padding: 10px; background: rgba(0, 0, 0, 0.8); border: 1px solid #00f0ff; color: #00f0ff; font-family: 'Courier New', monospace; font-size: 13px;">
+                                            <option value="all">全部</option>
+                                            <option value="HK">香港</option>
+                                            <option value="TW">台湾</option>
+                                            <option value="JP">日本</option>
+                                            <option value="SG">新加坡</option>
+                                            <option value="US">美国</option>
+                                            <option value="KR">韩国</option>
+                                            <option value="DE">德国</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div style="margin-top: 12px;">
+                                    <label style="display: block; margin-bottom: 6px; color: #00f0ff;">兜底优选池 URL</label>
+                                    <textarea id="optPool" rows="3" placeholder="留空使用内置地区池。每行一个 https 地址，最多 6 个" style="width: 100%; padding: 10px; background: rgba(0, 0, 0, 0.8); border: 1px solid #00f0ff; color: #00f0ff; font-family: 'Courier New', monospace; font-size: 13px;"></textarea>
+                                </div>
+                                <small style="color: #7aa9c4; font-size: 0.85rem; display: block; margin-top: 10px;">优选池按延迟和速度排序，测活去掉不通的地址，保底节点固定在最前并每 5 分钟轮换一次头部。IPv6 默认不进订阅。外部源缓存 30 分钟，拉取失败继续用上一份。填写了优选 IP 时默认只下发自定义节点和保底节点。</small>
+                            </div>
+                        </div>
+                                <label style="display: block; margin-bottom: 8px; color: #00f0ff; font-weight: bold; text-shadow: 0 0 3px #00f0ff;">优选IP筛选设置</label>
+/* ROUTE_OPT_END panel */                            <div style="padding: 15px; background: rgba(15, 3, 40, 0.6); border: 1px solid #00f0ff; border-radius: 5px;">
                                 <div style="margin-bottom: 15px;">
                                     <label style="display: block; margin-bottom: 8px; color: #00f0ff; font-weight: bold; text-shadow: 0 0 3px #00f0ff;">IP版本选择</label>
                                     <div style="display: flex; gap: 20px; flex-wrap: wrap;">
@@ -5805,7 +6669,9 @@ async function 处理订阅值(请求241, 用户240 = null) {
                                             <span style="font-size: 1rem;">IPv4</span>
                                         </label>
                                         <label style="display: inline-flex; align-items: center; cursor: pointer; color: #00f0ff;">
-                                            <input type="checkbox" id="ipv6Enabled" checked style="margin-right: 8px; width: 18px; height: 18px; cursor: pointer;">
+                                            <input type="checkbox" /* ROUTE_OPT_START ipv6-box */
+id="ipv6Enabled"
+/* ROUTE_OPT_END ipv6-box */ style="margin-right: 8px; width: 18px; height: 18px; cursor: pointer;">
                                             <span style="font-size: 1rem;">IPv6</span>
                                         </label>
                                     </div>
@@ -5827,7 +6693,9 @@ async function 处理订阅值(请求241, 用户240 = null) {
                                         </label>
                                     </div>
                                 </div>
-                                    <small style="color: #7aa9c4; font-size: 0.85rem; display: block; margin-top: 10px;">选择要使用的IP版本和运营商，未选中的将被过滤</small>
+                                    <small style="color: #7aa9c4; font-size: 0.85rem; display: block; margin-top: 10px;">/* ROUTE_OPT_START ipv6-hint */
+选择要使用的IP版本和运营商，未选中的将被过滤。IPv6 是否进入订阅还看上面的「IPv6 策略」，默认不下发。
+/* ROUTE_OPT_END ipv6-hint */</small>
                             </div>
                         </div>
                         <div style="margin-bottom: 15px;">
@@ -6683,9 +7551,19 @@ function 应用配置到界面(配置) {
   写入开关值('epi', 配置.epi, true);
   写入开关值('egi', 配置.egi, true);
   写入开关值('ipv4Enabled', 配置.ipv4, true);
-  写入开关值('ipv6Enabled', 配置.ipv6, true);
+/* ROUTE_OPT_START ui-load */
+  写入开关值('ipv6Enabled', 配置.ipv6, false);
+  写入开关值('optEnabled', 配置.opt, true);
+  写入开关值('optAnchor', 配置.optAnchor, true);
+  写入开关值('optProbe', 配置.optProbe, true);
+  写入开关值('optBalance', 配置.optBalance, true);
+  写入开关值('optMerge', 配置.optMerge, false);
+  写入字段值('optLimit', 配置.optLimit || '36');
+  写入字段值('v6policy', 配置.v6policy || 'off');
+  写入字段值('optRegion', 配置.optRegion || 'all');
+  写入字段值('optPool', 配置.optPool || '');
   写入开关值('ispMobile', 配置.ispMobile, true);
-  写入开关值('ispUnicom', 配置.ispUnicom, true);
+/* ROUTE_OPT_END ui-load */  写入开关值('ispUnicom', 配置.ispUnicom, true);
   写入开关值('ispTelecom', 配置.ispTelecom, true);
   写入字段值('customPath', 配置.d);
   写入字段值('customIP', 配置.p);
@@ -6730,11 +7608,24 @@ function 收集界面配置() {
     dkby: 读取字段值('portControl'),
     yxby: 读取字段值('preferredControl'),
     ipv4: 读取开关值('ipv4Enabled', true),
-    ipv6: 读取开关值('ipv6Enabled', true),
+/* ROUTE_OPT_START ipv6-read */
+    ipv6: 读取开关值('ipv6Enabled', false),
+/* ROUTE_OPT_END ipv6-read */
     ispMobile: 读取开关值('ispMobile', true),
     ispUnicom: 读取开关值('ispUnicom', true),
-    ispTelecom: 读取开关值('ispTelecom', true)
+/* ROUTE_OPT_START ui-save */
+    ispTelecom: 读取开关值('ispTelecom', true),
+    opt: 读取开关值('optEnabled', true),
+    optAnchor: 读取开关值('optAnchor', true),
+    optProbe: 读取开关值('optProbe', true),
+    optBalance: 读取开关值('optBalance', true),
+    optMerge: 读取开关值('optMerge', false),
+    optLimit: 读取字段值('optLimit') || '36',
+    v6policy: 读取字段值('v6policy') || 'off',
+    optRegion: 读取字段值('optRegion') || 'all',
+    optPool: 读取字段值('optPool')
   };
+/* ROUTE_OPT_END ui-save */
   if (配置.ev === 'no' && 配置.et === 'no' && 配置.ex === 'no') {
     配置.ev = 'yes';
     写入开关值('ev', 'yes', true);
@@ -6924,8 +7815,19 @@ async function 重置全部配置() {
           ispUnicom: '',
           ispTelecom: '',
           homepage: '',
-          alpn: ''
+/* ROUTE_OPT_START reset */
+          alpn: '',
+          opt: '',
+          optLimit: '',
+          optProbe: '',
+          optBalance: '',
+          optAnchor: '',
+          optMerge: '',
+          v6policy: '',
+          optRegion: '',
+          optPool: ''
         })
+/* ROUTE_OPT_END reset */
       });
       if (响应20098.status === 503) {
         显示状态('KV存储未配置，无法重置配置。', 'error');
@@ -9150,8 +10052,11 @@ function 更新配置值() {
     已解析代理5配置 = {};
     是否代理已启用 = false;
   }
+/* ROUTE_OPT_START config-apply */
   禁用优选 = !!(有效配置.yxby && 有效配置.yxby.toLowerCase() === 'yes');
+  应用线路优化开关();
 }
+/* ROUTE_OPT_END config-apply */
 function 更新自定义优选来源值() {
   const 值值30 = 获取配置值('yx', '');
   if (值值30) {

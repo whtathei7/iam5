@@ -125,6 +125,9 @@ jobs:
           # 删除 zip 文件（可选，如果不需要保留）
           rm -f "$FILE_NAME"
           echo "已删除压缩文件: $FILE_NAME"
+
+          echo "正在套用线路优化补丁..."
+          node scripts/apply-route-optimizer.mjs
           
           # 确保创建或更新版本记录文件
           if [ ! -f "VERSION.txt" ]; then
