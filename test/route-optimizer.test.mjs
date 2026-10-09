@@ -338,6 +338,11 @@ test('订阅请求会走优选、保底前置和缓存', async () => {
   assert.match(Clash正文, new RegExp(`config: "${测试ECH配置.replace(/[+]/g, '\\+')}"`));
   assert.doesNotMatch(Clash正文, /query-server-name:/);
   assert.match(Clash正文, /path: "?\/assets\/[0-9a-f]+\?ed=2048"?/);
+  assert.match(Clash正文, /- name: "♻️ 自动选择"\s*\n\s+type: url-test/);
+  assert.match(Clash正文, /url: http:\/\/www\.gstatic\.com\/generate_204\s*\n\s+interval: 300\s*\n\s+tolerance: 50\s*\n\s+lazy: true/);
+  assert.match(Clash正文, /- name: "🚀 节点选择"\s*\n\s+type: select\s*\n\s+proxies:\s*\n\s+- "♻️ 自动选择"/);
+  assert.match(Clash正文, /RULE-SET,gfw,🚀 节点选择/);
+  assert.match(Clash正文, /MATCH,🐟 漏网之鱼/);
   const 自定义 = await 工人.default.fetch(new Request(`https://example.com/${令牌}/sub`), {
     ...测试环境,
     yx: '1.2.3.4:443#自定甲,5.6.7.8:443#自定乙'

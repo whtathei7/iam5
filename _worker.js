@@ -2246,7 +2246,20 @@ function 生成值值589(链接列表588, 本地值587 = {}) {
   const 值值580 = ['proxies:'];
   for (const 数量值579 of 节点列表586) 值值580.push(构建值节点行(数量值579));
   const 节点仅 = 名称列表584.length ? 名称列表584.map(数量值578 => `      - ${处理本地值622(数量值578)}`).join('\n') : '      - DIRECT';
-  const 值值577 = [解码64('cHJveHktZ3JvdXBzOg=='), '  - name: "🚀 节点选择"', '    type: select', '    proxies:', '      - "🎯 全球直连"', 节点仅, '  - name: "🌍 国外媒体"', '    type: select', '    proxies:', 处理值选择值(名称列表584), '  - name: "📺 哔哩哔哩"', '    type: select', '    proxies:', 处理值选择值(名称列表584, {
+/* ROUTE_OPT_START clash-auto-fastest */
+  const 自动测速组名 = '♻️ 自动选择';
+  const 自动测速组 = [
+    '  - name: "' + 自动测速组名 + '"',
+    '    type: url-test',
+    '    url: http://www.gstatic.com/generate_204',
+    '    interval: 300',
+    '    tolerance: 50',
+    '    lazy: true',
+    '    proxies:',
+    节点仅
+  ].join('\n');
+  const 值值577 = [解码64('cHJveHktZ3JvdXBzOg=='), 自动测速组, '  - name: "🚀 节点选择"', '    type: select', '    proxies:', '      - "' + 自动测速组名 + '"', '      - "🎯 全球直连"', 节点仅,
+/* ROUTE_OPT_END clash-auto-fastest */ '  - name: "🌍 国外媒体"', '    type: select', '    proxies:', 处理值选择值(名称列表584), '  - name: "📺 哔哩哔哩"', '    type: select', '    proxies:', 处理值选择值(名称列表584, {
     directFirst: true
   }), '  - name: "📹 油管视频"', '    type: select', '    proxies:', 处理值选择值(名称列表584, {
     extraGroups: ['🌍 国外媒体']

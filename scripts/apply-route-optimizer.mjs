@@ -322,6 +322,23 @@ const 面板 = `                        <div style="margin-bottom: 15px;">
 );
 
 写入(
+  'clash-auto-fastest',
+  `  const 值值577 = [解码64('cHJveHktZ3JvdXBzOg=='), '  - name: "🚀 节点选择"', '    type: select', '    proxies:', '      - "🎯 全球直连"', 节点仅,`,
+  `  const 自动测速组名 = '♻️ 自动选择';
+  const 自动测速组 = [
+    '  - name: "' + 自动测速组名 + '"',
+    '    type: url-test',
+    '    url: http://www.gstatic.com/generate_204',
+    '    interval: 300',
+    '    tolerance: 50',
+    '    lazy: true',
+    '    proxies:',
+    节点仅
+  ].join('\\n');
+  const 值值577 = [解码64('cHJveHktZ3JvdXBzOg=='), 自动测速组, '  - name: "🚀 节点选择"', '    type: select', '    proxies:', '      - "' + 自动测速组名 + '"', '      - "🎯 全球直连"', 节点仅,`
+);
+
+写入(
   'module',
   'async function 处理订阅请求(请求507, 用户506, 网址505 = null) {\n',
   `${核心}\n${胶水}\nasync function 处理订阅请求(请求507, 用户506, 网址505 = null) {\n`
