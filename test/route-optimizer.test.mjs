@@ -118,6 +118,17 @@ test('独立入口限制为两个，并让自动测速在不同入口间交错',
     'main.example.com', 'backup-a.example.com', 'backup-b.example.com',
     'main.example.com', 'backup-a.example.com', 'backup-b.example.com'
   ]);
+  const 多协议 = 挑选自动测速节点([
+    { name: '高速01·电信-01', server: '104.18.1.1', port: 443, sni: 'main.example.com', type: 'vless' },
+    { name: '高速01·电信-02', server: '104.18.1.1', port: 443, sni: 'main.example.com', type: 'trojan' },
+    { name: '高速02·电信-01', server: '104.18.1.2', port: 443, sni: 'main.example.com', type: 'vless' },
+    { name: '备用·高速01·电信-01', server: '104.18.1.1', port: 443, sni: 'backup.example.com', type: 'vless' }
+  ], 6);
+  assert.deepEqual(多协议.map(项 => 项.name), [
+    '高速01·电信-01',
+    '备用·高速01·电信-01',
+    '高速02·电信-01'
+  ]);
 });
 
 test('历史成功率会惩罚连续失败，并优先稳定的电信高速节点', () => {
