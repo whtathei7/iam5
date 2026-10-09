@@ -131,6 +131,10 @@ function 记住写入账本(数据, 沿用摘要) {
   const 现在 = Date.now();
   const 日 = new Date(现在).toISOString().slice(0, 10);
   if (线路写入账本.day !== 日) 线路写入账本 = { day: 日, writes: 0, lastAt: 0, hash: '' };
+  if (数据.ledger && 数据.ledger.day === 日) {
+    线路写入账本.writes = Math.max(线路写入账本.writes || 0, Number(数据.ledger.writes) || 0);
+    线路写入账本.lastAt = Math.max(线路写入账本.lastAt || 0, Number(数据.ledger.lastAt) || 0);
+  }
   if (沿用摘要 && 数据.hash) 线路写入账本.hash = 数据.hash;
   if (数据.at) 线路写入账本.lastAt = Math.max(线路写入账本.lastAt || 0, 数据.at || 0);
 }
@@ -179,6 +183,7 @@ async function 写入线路缓存(键, 节点, 探测有效, 独占) {
       key: 键,
       at: 现在,
       hash: 哈希,
+      ledger: 线路写入账本,
       nodes: 可存.map(压缩节点)
     }), { expirationTtl: 21600 });
     return 'write';
@@ -458,7 +463,7 @@ async function 拉取远程优选(选项) {
   return 合并去重(节点);
 }
 
-async function 刷新线路候选(键, 选项, 本地候选, 独占) {
+async function 刷新线路候选(键, 选项, 本地候选, 独占, 历史节点 = []) {
   if (线路优化刷新任务 && 线路优化刷新键 === 键) return 线路优化刷新任务;
   线路优化刷新键 = 键;
   线路优化刷新任务 = (async () => {
@@ -470,7 +475,7 @@ async function 刷新线路候选(键, 选项, 本地候选, 独占) {
     if (选项.anchor && !独占) 候选 = 入口补位(候选, 8);
     候选 = 扩展备用端口(候选);
     const 测活 = await 测活候选(候选, 选项);
-    候选 = 测活.nodes;
+    候选 = 更新测活历史(测活.nodes, 历史节点);
     let 四版数 = 候选.filter(项 => 项.kind === 'v4' && 项.tier !== 5).length;
     if (启用优选地址 && !独占 && 选项.probe && 四版数 < 4) {
       const 补测 = await 测活候选(随机补足节点(4), { ...选项, limit: 8 }, true);
@@ -509,10 +514,10 @@ async function 组装线路优化节点() {
   } else if (缓存 && 缓存.nodes.length) {
     候选 = 缓存.nodes;
     缓存状态 = 'stale';
-    const 刷新 = 刷新线路候选(键, 选项, 本地, 独占).catch(() => []);
+    const 刷新 = 刷新线路候选(键, 选项, 本地, 独占, 缓存.nodes).catch(() => []);
     if (执行上下文 && typeof 执行上下文.waitUntil === 'function') 执行上下文.waitUntil(刷新);
   } else {
-    候选 = await 刷新线路候选(键, 选项, 本地, 独占);
+    候选 = await 刷新线路候选(键, 选项, 本地, 独占, []);
     缓存状态 = 候选.length ? 'miss' : 'empty';
     if (!候选.length) 候选 = 筛选优选(合并去重(收成云墙(本地)), 选项);
   }
@@ -521,13 +526,19 @@ async function 组装线路优化节点() {
   const 入口 = 生成入口节点(线路入口域名);
   if (入口) 候选 = 合并去重(候选.concat([入口]));
   let 最终 = 编排优选节点(候选, 选项);
+  const 高速排名 = new Map(挑选电信大带宽节点(最终, 6).map((节点, 索引) => [节点键(节点), 索引 + 1]));
+  最终 = 最终.map(节点 => 高速排名.has(节点键(节点)) && !/^高速\d+·/.test(String(节点.isp || ''))
+    ? { ...节点, isp: `高速${String(高速排名.get(节点键(节点))).padStart(2, '0')}·${节点.isp || '电信'}`, bandwidth: true }
+    : 节点);
   const 备用前置域名 = 读取备用前置域名();
   最终 = 分配前置域名(最终, 线路入口域名, 备用前置域名);
   const 池内 = 候选.filter(项 => 项.kind !== 'domain').length;
   const 已选地址 = 最终.filter(项 => 项.kind !== 'domain').length;
   const 边缘已测 = 最终.filter(项 => 项.kind !== 'domain' && 项.edgeStatus).length;
   const 边缘可达 = 最终.filter(项 => 项.kind !== 'domain' && 项.edgeStatus === 'ok').length;
-  线路优化摘要 = `on;count=${最终.length};selected=${已选地址};edge_ok=${边缘可达};edge_tested=${边缘已测};user_ok=unknown;fronts=${备用前置域名.length + 1};pool=${池内};cache=${缓存状态}`;
+  const 历史样本 = 最终.filter(项 => (Number(项.successes) || 0) + (Number(项.failures) || 0) > 0).length;
+  const 稳定节点 = 最终.filter(项 => Number(项.successes) >= 2 && 历史成功率(项) >= 0.75 && !(Number(项.failureStreak) > 0)).length;
+  线路优化摘要 = `on;count=${最终.length};selected=${已选地址};edge_ok=${边缘可达};edge_tested=${边缘已测};history=${历史样本};stable=${稳定节点};user_ok=unknown;fronts=${备用前置域名.length + 1};pool=${池内};cache=${缓存状态}`;
   return 最终;
 }
 

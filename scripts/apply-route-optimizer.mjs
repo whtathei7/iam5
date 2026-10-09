@@ -335,20 +335,37 @@ const 面板 = `                        <div style="margin-bottom: 15px;">
 写入(
   'clash-auto-fastest',
   `  const 值值577 = [解码64('cHJveHktZ3JvdXBzOg=='), '  - name: "🚀 节点选择"', '    type: select', '    proxies:', '      - "🎯 全球直连"', 节点仅,`,
-  `  const 自动测速组名 = '♻️ 自动选择';
-  const 自动测速节点 = 挑选自动测速节点(节点列表586, 12);
-  const 自动测速仅 = 自动测速节点.length ? 自动测速节点.map(节点 => \`      - \${处理本地值622(节点.name)}\`).join('\\n') : '      - DIRECT';
-  const 自动测速组 = [
-    '  - name: "' + 自动测速组名 + '"',
+  `  const 低延迟组名 = '⚡ 电信低延迟';
+  const 大带宽组名 = '🚄 电信大带宽';
+  const 电信节点 = 节点列表586.filter(节点 => /电信/.test(节点.name || ''));
+  const 低延迟节点 = 挑选自动测速节点(电信节点.length ? 电信节点 : 节点列表586, 8);
+  const 高速节点 = 节点列表586.filter(节点 => /高速\\d+·.*电信/.test(节点.name || '')).sort((甲, 乙) => {
+    const 甲序 = Number((甲.name.match(/高速(\\d+)·/) || [])[1]) || 999;
+    const 乙序 = Number((乙.name.match(/高速(\\d+)·/) || [])[1]) || 999;
+    return 甲序 - 乙序;
+  });
+  const 大带宽节点 = 挑选自动测速节点(高速节点.length ? 高速节点 : 低延迟节点, 6);
+  const 列出测速节点 = 列表 => 列表.length ? 列表.map(节点 => \`      - \${处理本地值622(节点.name)}\`).join('\\n') : '      - DIRECT';
+  const 低延迟组 = [
+    '  - name: "' + 低延迟组名 + '"',
     '    type: url-test',
     '    url: http://www.gstatic.com/generate_204',
     '    interval: 600',
     '    tolerance: 50',
     '    lazy: true',
     '    proxies:',
-    自动测速仅
+    列出测速节点(低延迟节点)
   ].join('\\n');
-  const 值值577 = [解码64('cHJveHktZ3JvdXBzOg=='), 自动测速组, '  - name: "🚀 节点选择"', '    type: select', '    proxies:', '      - "' + 自动测速组名 + '"', '      - "🎯 全球直连"', 节点仅,`
+  const 大带宽组 = [
+    '  - name: "' + 大带宽组名 + '"',
+    '    type: fallback',
+    '    url: http://www.gstatic.com/generate_204',
+    '    interval: 1800',
+    '    lazy: true',
+    '    proxies:',
+    列出测速节点(大带宽节点)
+  ].join('\\n');
+  const 值值577 = [解码64('cHJveHktZ3JvdXBzOg=='), 大带宽组, 低延迟组, '  - name: "🚀 节点选择"', '    type: select', '    proxies:', '      - "' + 大带宽组名 + '"', '      - "' + 低延迟组名 + '"', '      - "🎯 全球直连"', 节点仅,`
 );
 
 写入(

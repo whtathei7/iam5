@@ -39,6 +39,9 @@ import {
   整理电信优选节点,
   解析独立入口配置,
   挑选自动测速节点,
+  挑选电信大带宽节点,
+  更新测活历史,
+  历史成功率,
   允许访问,
   重置访问账本
 } from '../src/route-optimizer-core.mjs';
@@ -115,6 +118,26 @@ test('独立入口限制为两个，并让自动测速在不同入口间交错',
     'main.example.com', 'backup-a.example.com', 'backup-b.example.com',
     'main.example.com', 'backup-a.example.com', 'backup-b.example.com'
   ]);
+});
+
+test('历史成功率会惩罚连续失败，并优先稳定的电信高速节点', () => {
+  const 旧节点 = [
+    { ip: '104.18.1.1', port: 443, successes: 8, failures: 1, failureStreak: 0 },
+    { ip: '104.18.1.2', port: 443, successes: 2, failures: 2, failureStreak: 2 }
+  ];
+  const 现在 = Date.parse('2026-10-09T08:00:00Z');
+  const 更新 = 更新测活历史([
+    { ...旧节点[0], isp: '电信', tier: 1, kind: 'v4', speed: 20, latency: 50, edgeStatus: 'ok' },
+    { ...旧节点[1], isp: '电信', tier: 1, kind: 'v4', speed: 80, latency: 20, edgeStatus: 'timeout' },
+    { ip: '104.18.1.3', port: 443, isp: '移动', tier: 1, kind: 'v4', speed: 100, latency: 10, edgeStatus: 'ok' }
+  ], 旧节点, 现在);
+  assert.equal(更新[0].successes, 9);
+  assert.equal(更新[0].failureStreak, 0);
+  assert.equal(更新[1].failures, 3);
+  assert.equal(更新[1].failureStreak, 3);
+  assert.ok(历史成功率(更新[0]) > 历史成功率(更新[1]));
+  const 高速 = 挑选电信大带宽节点(更新, 6);
+  assert.deepEqual(高速.map(节点 => 节点.ip), ['104.18.1.1']);
 });
 
 test('保底在前，低延迟优先，IPv6 默认不占名额，数量封顶', () => {
@@ -296,9 +319,12 @@ test('优选缓存相同内容不写，随机地址不落盘，探测失败不�
   const 随机 = { ip: '104.16.1.1', port: 443, isp: '随机补足', tier: 5, kind: 'v4', latency: null, speed: 0, region: '' };
   const 可存 = 可持久化节点(保底.concat([随机]));
   assert.deepEqual(可存.map(项 => 项.ip), ['1.1.1.1']);
-  const 还原 = 展开节点(压缩节点(可存[0]));
+  const 还原 = 展开节点(压缩节点({ ...可存[0], successes: 7, failures: 2, failureStreak: 1 }));
   assert.equal(还原.isp, '保底');
   assert.equal(还原.tier, 0);
+  assert.equal(还原.successes, 7);
+  assert.equal(还原.failures, 2);
+  assert.equal(还原.failureStreak, 1);
   const 现在 = Date.parse('2026-10-09T00:00:00Z');
   const 首次 = 判断缓存写入(null, 现在, 'abc');
   assert.equal(首次.ok, true);
@@ -350,7 +376,7 @@ test('订阅请求会走优选、保底前置和缓存', async () => {
   assert.equal(行1.every(行 => 行.includes('ech=')), true);
   assert.ok(new Set(行1.map(行 => new URL(行).searchParams.get('path'))).size > 1);
   assert.match(摘要1, /selected=\d+/);
-  assert.match(摘要1, /edge_ok=\d+;edge_tested=\d+;user_ok=unknown/);
+  assert.match(摘要1, /edge_ok=\d+;edge_tested=\d+;history=\d+;stable=\d+;user_ok=unknown/);
   assert.match(decodeURIComponent(行1[0]), /保底|移动|联通|电信|香港|台湾|日本/);
   assert.equal(行1.some(行 => /@(?:10\.|127\.|192\.168\.|0\.0\.0\.0)/.test(行)), false);
   assert.equal(行1.some(行 => 行.includes('[')), false);
@@ -365,9 +391,10 @@ test('订阅请求会走优选、保底前置和缓存', async () => {
   assert.match(Clash正文, new RegExp(`config: "${测试ECH配置.replace(/[+]/g, '\\+')}"`));
   assert.doesNotMatch(Clash正文, /query-server-name:/);
   assert.match(Clash正文, /path: "?\/assets\/[0-9a-f]+\?ed=2048"?/);
-  assert.match(Clash正文, /- name: "♻️ 自动选择"\s*\n\s+type: url-test/);
+  assert.match(Clash正文, /- name: "⚡ 电信低延迟"\s*\n\s+type: url-test/);
   assert.match(Clash正文, /url: http:\/\/www\.gstatic\.com\/generate_204\s*\n\s+interval: 600\s*\n\s+tolerance: 50\s*\n\s+lazy: true/);
-  assert.match(Clash正文, /- name: "🚀 节点选择"\s*\n\s+type: select\s*\n\s+proxies:\s*\n\s+- "♻️ 自动选择"/);
+  assert.match(Clash正文, /- name: "🚄 电信大带宽"\s*\n\s+type: fallback\s*\n\s+url: http:\/\/www\.gstatic\.com\/generate_204\s*\n\s+interval: 1800\s*\n\s+lazy: true/);
+  assert.match(Clash正文, /- name: "🚀 节点选择"\s*\n\s+type: select\s*\n\s+proxies:\s*\n\s+- "🚄 电信大带宽"\s*\n\s+- "⚡ 电信低延迟"/);
   assert.match(Clash正文, /RULE-SET,gfw,🚀 节点选择/);
   assert.match(Clash正文, /MATCH,🐟 漏网之鱼/);
   const 独立用户 = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
