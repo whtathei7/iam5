@@ -45,13 +45,17 @@ async function 获取线路ECH配置(入口域名) {
     线路ECH状态 = 'env';
     return 环境配置;
   }
-  const 域名 = String(自定义加密客户端问候域名 || 入口域名 || 'cloudflare-ech.com').trim().toLowerCase();
+  const 域名 = 选择ECH查询域名(入口域名, 自定义加密客户端问候域名);
+  if (!域名) {
+    线路ECH状态 = 'off';
+    return '';
+  }
   const 现在 = Date.now();
   if (线路ECH缓存.domain === 域名 && 线路ECH缓存.value && 现在 - 线路ECH缓存.at < 60 * 1000) {
     线路ECH状态 = 'cache';
     return 线路ECH缓存.value;
   }
-  const 最新 = await 查询ECH配置(域名) || (域名 === 入口域名 ? '' : await 查询ECH配置(入口域名));
+  const 最新 = await 查询ECH配置(域名);
   if (最新) {
     线路ECH缓存 = { domain: 域名, value: 最新, at: 现在 };
     线路ECH状态 = 'static';
@@ -61,8 +65,12 @@ async function 获取线路ECH配置(入口域名) {
     线路ECH状态 = 'stale';
     return 线路ECH缓存.value;
   }
-  线路ECH状态 = 'dns';
+  线路ECH状态 = 'off';
   return '';
+}
+
+function 当前订阅ECH值() {
+  return 订阅用ECH值(启用加密客户端问候, 线路ECH配置);
 }
 
 function 读取备用前置域名() {
@@ -112,7 +120,7 @@ function 读取当前线路选项() {
 
 function 线路缓存键(选项, 自定义摘要) {
   return [
-    'stable6',
+    'stable7',
     选项.region,
     选项.mobile ? 1 : 0,
     选项.unicom ? 1 : 0,
@@ -296,25 +304,15 @@ async function 探测握手(主机, 端口, 超时毫秒) {
 
 async function 测活候选(候选, 选项) {
   if (!选项.probe) return { nodes: (候选 || []).filter(稳定可下发), effective: true };
-  const 样本 = (候选 || []).filter(节点 => 节点 && 节点.kind !== 'domain' && (节点.pinned || 位于云墙网段(节点.ip))).slice(0, 36);
+  // 只抽查前几名，确认是不是 TLS。超时仍保留原 443，避免一次探测把订阅改成全员 8443 或删空。
+  const 样本 = (候选 || []).filter(节点 => 节点 && 节点.kind !== 'domain' && (节点.pinned || 位于云墙网段(节点.ip))).slice(0, 8);
   if (!样本.length) return 应用握手结果(候选, [], 选项, true);
-  const 首轮 = await 并发映射(样本, 5, async 节点 => {
+  const 首轮 = await 并发映射(样本, 3, async 节点 => {
     const 端口 = 规范云墙端口(节点.port, !!节点.pinned);
-    const 状态 = await 探测握手(节点.ip, 端口, 900);
-    return { key: 节点键(节点), port: 端口, status: 状态, node: 节点 };
+    const 状态 = await 探测握手(节点.ip, 端口, 800);
+    return { key: 节点键(节点), status: 状态 };
   });
-  let 结果 = 首轮.map(项 => ({ key: 项.key, port: 项.port, status: 项.status }));
-  const 失败 = 首轮.filter(项 => 项.status !== 'ok').slice(0, 8);
-  if (失败.length) {
-    const 补救 = await 并发映射(失败, 3, async 项 => {
-      const 状态 = await 探测握手(项.node.ip, 8443, 700);
-      if (状态 === 'ok') return { key: 项.key, port: 8443, status: 'ok' };
-      return { key: 项.key, port: 项.port, status: 项.status };
-    });
-    const 补表 = new Map(补救.map(项 => [项.key, 项]));
-    结果 = 结果.map(项 => 补表.get(项.key) || 项);
-  }
-  return 应用握手结果(候选, 结果, 选项, true);
+  return 应用握手结果(候选, 首轮, 选项, true);
 }
 
 async function 域名仍可解析(域名) {

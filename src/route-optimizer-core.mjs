@@ -730,6 +730,10 @@ function 收入不重复(目标, 已见, 候选, 数量) {
   }
 }
 
+function 有实测依据(节点) {
+  return !!(节点 && (节点.pinned || 节点.sourced || 节点.speed > 0 || 节点.latency != null));
+}
+
 export function 应用握手结果(列表, 探测, 选项, 严格 = false) {
   const 原文 = 列表 || [];
   if (!选项 || !选项.probe) return { nodes: 原文.filter(稳定可下发), effective: true };
@@ -742,12 +746,18 @@ export function 应用握手结果(列表, 探测, 选项, 严格 = false) {
       continue;
     }
     const 结果 = 表.get(节点键(节点));
+    // 抽查覆盖不到的实测地址仍要下发，不能因为没轮到探测就把整池删空。
     if (!结果) {
-      if (!严格 && 节点.pinned) 留下.push(节点);
+      if (有实测依据(节点)) 留下.push(节点);
       continue;
     }
-    if (结果.status !== 'ok') continue;
-    留下.push({ ...节点, port: 结果.port || 节点.port || 443, alive: true, edgeStatus: 'ok' });
+    // 明确不是 TLS 才删除。Worker 内部超时不代表用户侧不通，也不改端口。
+    if (结果.status === 'dead') continue;
+    if (结果.status === 'ok') {
+      留下.push({ ...节点, port: 节点.port || 443, alive: true, edgeStatus: 'ok' });
+      continue;
+    }
+    if (有实测依据(节点) || !严格) 留下.push(节点);
   }
   const 节点 = 合并去重(留下).filter(稳定可下发);
   return { nodes: 节点, effective: 节点.some(项 => 项.kind !== 'domain' && 项.alive) };
@@ -1028,6 +1038,20 @@ export function 短哈希(文本) {
     值 = Math.imul(值, 16777619);
   }
   return (值 >>> 0).toString(16);
+}
+
+export function 选择ECH查询域名(入口域名, 指定域名 = '') {
+  const 清理 = 文本 => String(文本 || '').trim().toLowerCase().replace(/\.$/, '');
+  const 入口 = 清理(入口域名);
+  const 指定 = 清理(指定域名);
+  // cloudflare-ech.com 只是 ECH 的对外伪装名。用它自己的配置去连别的域名，客户端会在每个节点上握手失败。
+  if (指定 && 指定 !== 'cloudflare-ech.com') return 指定;
+  return 入口;
+}
+
+export function 订阅用ECH值(启用, 配置) {
+  if (!启用 || !是ECH配置(配置)) return '';
+  return String(配置).trim();
 }
 
 export function 是ECH配置(值) {

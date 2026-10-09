@@ -30,6 +30,8 @@ import {
   标注保底,
   扩展备用端口,
   是ECH配置,
+  选择ECH查询域名,
+  订阅用ECH值,
   提取ECH配置,
   生成抗阻断路径,
   分配前置域名,
@@ -231,12 +233,17 @@ test('移动不会被电信挤掉，握手失败的地址不再下发', () => {
   ];
   const 样本 = 挑选测活样本(列表, 2);
   assert.deepEqual(样本.map(项 => 项.ip), ['104.16.1.3', '104.17.1.9']);
-  const 全灭 = 应用握手结果(列表, 列表.filter(节点 => 节点.kind !== 'domain').map(节点 => ({ key: 节点键(节点), status: 'timeout', port: 节点.port })), 选项);
-  assert.equal(全灭.effective, false);
-  assert.deepEqual(全灭.nodes.map(项 => 项.ip), ['example.com']);
-  const 测通 = 应用握手结果(列表, [{ key: 节点键(列表[3]), status: 'ok', port: 443 }], 选项);
-  assert.deepEqual(测通.nodes.map(项 => 项.ip), ['104.17.1.9', 'example.com']);
-  assert.equal(测通.nodes[0].alive, true);
+  const 超时 = 应用握手结果(列表, 列表.filter(节点 => 节点.kind !== 'domain').map(节点 => ({ key: 节点键(节点), status: 'timeout', port: 8443 })), 选项);
+  assert.equal(超时.effective, false);
+  assert.deepEqual(超时.nodes.map(项 => 项.ip), ['104.16.1.1', '104.16.1.2', '104.16.1.3', '104.17.1.9', 'example.com']);
+  assert.equal(超时.nodes.filter(项 => 项.kind !== 'domain').every(项 => 项.port === 443), true);
+  const 明确失败 = 应用握手结果(列表, 列表.filter(节点 => 节点.kind !== 'domain').map(节点 => ({ key: 节点键(节点), status: 'dead', port: 节点.port })), 选项);
+  assert.equal(明确失败.effective, false);
+  assert.deepEqual(明确失败.nodes.map(项 => 项.ip), ['example.com']);
+  const 测通 = 应用握手结果(列表, [{ key: 节点键(列表[3]), status: 'ok', port: 8443 }], 选项);
+  assert.deepEqual(测通.nodes.map(项 => 项.ip), ['104.16.1.1', '104.16.1.2', '104.16.1.3', '104.17.1.9', 'example.com']);
+  assert.equal(测通.nodes.find(项 => 项.ip === '104.17.1.9').alive, true);
+  assert.equal(测通.nodes.find(项 => 项.ip === '104.17.1.9').port, 443);
   assert.equal(社区节点(列表[4]), true);
   assert.equal(社区节点(列表[5]), false);
   const 电信 = Array.from({ length: 8 }, (_, 序) => ({ ip: `104.18.2.${序 + 1}`, port: 443, isp: '电信', tier: 1, kind: 'v4', latency: 40, speed: 20, region: '' }));
@@ -264,6 +271,12 @@ test('可以从 HTTPS DNS 回答中提取静态 ECHConfig', () => {
   assert.equal(是ECH配置('='.repeat(40)), false);
   assert.equal(提取ECH配置({ Answer: [{ type: 65, data: `1 . alpn=h3,h2 ech=${配置} ipv4hint=1.1.1.1` }] }), 配置);
   assert.equal(提取ECH配置({ Answer: [{ type: 1, data: '1.1.1.1' }] }), '');
+  assert.equal(选择ECH查询域名('worker.example.com', 'cloudflare-ech.com'), 'worker.example.com');
+  assert.equal(选择ECH查询域名('worker.example.com', ''), 'worker.example.com');
+  assert.equal(选择ECH查询域名('worker.example.com', 'ech.example.com'), 'ech.example.com');
+  assert.equal(订阅用ECH值(true, 配置), 配置);
+  assert.equal(订阅用ECH值(true, 'cloudflare-ech.com+https://223.5.5.5/dns-query'), '');
+  assert.equal(订阅用ECH值(false, 配置), '');
 });
 
 test('私网和网段外地址不能下发，钉住的自定义地址可以', () => {
@@ -425,7 +438,10 @@ test('套用脚本可重复执行，工人脚本语法保持有效', () => {
   const 二次 = fs.readFileSync(new URL('../_worker.js', import.meta.url));
   assert.equal(一次.equals(二次), true);
   assert.match(二次.toString(), /组装线路优化节点/);
-  assert.match(二次.toString(), /stable6/);
+  assert.match(二次.toString(), /stable7/);
+  assert.match(二次.toString(), /当前订阅ECH值/);
+  assert.doesNotMatch(二次.toString(), /cloudflare-ech\.com\+\$\{/);
+  assert.doesNotMatch(二次.toString(), /query-server-name: \$\{处理本地值622/);
   assert.match(二次.toString(), /线路优化新鲜毫秒 = 10 \* 60 \* 1000/);
   assert.doesNotMatch(二次.toString(), /入口补位\(候选/);
   assert.doesNotMatch(二次.toString(), /随机补足节点\(4\)/);
@@ -449,7 +465,20 @@ test('订阅请求会走优选、保底前置和缓存', async () => {
   const 正文1 = Buffer.from(await 第一次.text(), 'base64').toString('utf8');
   const 行1 = 正文1.split('\n').filter(Boolean);
   assert.ok(行1.length >= 8 && 行1.length <= 36, `节点数量异常: ${行1.length} ${摘要1}`);
-  assert.equal(行1.every(行 => 行.includes('ech=')), true);
+  assert.equal(行1.every(行 => new URL(行).searchParams.get('ech') === 测试ECH配置), true);
+  assert.equal(行1.some(行 => /cloudflare-ech\.com\+/.test(行)), false);
+  const 普通环境 = { u: 令牌 };
+  const 普通订阅 = await 工人.default.fetch(new Request(`https://nocfg.example/${令牌}/sub`), 普通环境, { waitUntil() {} });
+  assert.equal(普通订阅.status, 200);
+  assert.equal(普通订阅.headers.get('X-ECH-Mode'), 'off');
+  const 普通正文 = Buffer.from(await 普通订阅.text(), 'base64').toString('utf8');
+  const 普通行 = 普通正文.split('\n').filter(Boolean);
+  assert.ok(普通行.length >= 8 && 普通行.length <= 36);
+  assert.equal(普通行.every(行 => !new URL(行).searchParams.get('ech')), true);
+  const 普通Clash = await 工人.default.fetch(new Request(`https://nocfg.example/${令牌}/sub?target=clash`), 普通环境, { waitUntil() {} });
+  const 普通Clash正文 = await 普通Clash.text();
+  assert.equal(普通Clash.headers.get('X-ECH-Mode'), 'off');
+  assert.doesNotMatch(普通Clash正文, /ech-opts:|query-server-name:/);
   assert.ok(new Set(行1.map(行 => new URL(行).searchParams.get('path'))).size > 1);
   assert.match(摘要1, /selected=\d+/);
   assert.match(摘要1, /edge_ok=\d+;edge_tested=\d+;history=\d+;stable=\d+;user_ok=unknown/);
@@ -490,6 +519,8 @@ test('订阅请求会走优选、保底前置和缓存', async () => {
   assert.equal(自动出站.url, 'https://www.gstatic.com/generate_204');
   assert.ok(自动出站.outbounds.length >= 1);
   assert.equal(单盒.outbounds.find(项 => 项.tag === 'select').default, '⚡ 自动选择');
+  const 单盒节点 = 单盒.outbounds.find(项 => 项.tls && 项.tls.server_name);
+  assert.deepEqual(单盒节点.tls.ech.config, [测试ECH配置]);
   const 独立用户 = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
   const 独立配置 = await 工人.default.fetch(new Request(`https://example.com/${令牌}/sub?target=clash`), {
     ...测试环境,

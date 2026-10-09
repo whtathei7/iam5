@@ -149,7 +149,7 @@ const 面板 = `                        <div style="margin-bottom: 15px;">
                                         <span>自定义节点合并默认池</span>
                                     </label>
                                 </div>
-                                <div class="opt-note" style="font-size: 13px; line-height: 1.6; margin-bottom: 10px;">持续拉取 BestCF 的电信、移动实测地址。只下发 Cloudflare 网段里握手成功的节点，订阅默认自动选择最快。</div>
+                                <div class="opt-note" style="font-size: 13px; line-height: 1.6; margin-bottom: 10px;">持续拉取 BestCF 的电信、移动实测地址。只下发 Cloudflare 网段里的节点，订阅默认自动选择最快。</div>
                                 <div style="display: flex; flex-wrap: wrap; gap: 12px;">
                                     <div style="min-width: 120px; flex: 1;">
                                         <label style="display: block; margin-bottom: 6px; color: #00f0ff;">下发数量</label>
@@ -181,7 +181,7 @@ const 面板 = `                        <div style="margin-bottom: 15px;">
                                     <label style="display: block; margin-bottom: 6px; color: #00f0ff;">兜底优选池 URL</label>
                                     <textarea id="optPool" rows="3" placeholder="留空即可。额外地址只有落在 Cloudflare 网段才会进入订阅，每行一个 https 地址，最多 6 个" style="width: 100%; padding: 10px; background: rgba(0, 0, 0, 0.8); border: 1px solid #00f0ff; color: #00f0ff; font-family: 'Courier New', monospace; font-size: 13px;"></textarea>
                                 </div>
-                                <small style="color: #7aa9c4; font-size: 0.85rem; display: block; margin-top: 10px;">优选结果超过 10 分钟会在后台更新，6 小时内仍先用上一份。握手失败、连续失败和 Cloudflare 网段以外的地址都不会出现在订阅里。</small>
+                                <small style="color: #7aa9c4; font-size: 0.85rem; display: block; margin-top: 10px;">优选结果超过 10 分钟会在后台更新，6 小时内仍先用上一份。明确拒绝 TLS 的地址、连续失败和 Cloudflare 网段以外的地址不会出现在订阅里。探测超时仍保留原 443。</small>
                             </div>
                         </div>
 `;
@@ -246,14 +246,12 @@ const 面板 = `                        <div style="margin-bottom: 15px;">
     const 加密客户端问候域名499 = 自定义加密客户端问候域名 || 'cloudflare-ech.com';
     加密客户端问候配置501 = \`\${加密客户端问候域名499}+\${域名系统值500}\`;
   }`,
-  `  // 优先由 Worker 获取最新 ECHConfig 并直接下发，避免客户端本地 HTTPS DNS 查询失败。
+  `  // 只下发本域名自己的 ECHConfig。拿不到时留空，节点走普通 TLS，避免套用 cloudflare-ech.com 的配置后全部握手失败。
   let 加密客户端问候配置501 = null;
   线路ECH配置 = '';
   if (启用加密客户端问候) {
-    const 域名系统值500 = 自定义域名系统 || 'https://223.5.5.5/dns-query';
-    const 加密客户端问候域名499 = 自定义加密客户端问候域名 || 'cloudflare-ech.com';
     线路ECH配置 = await 获取线路ECH配置(工作器域名504);
-    加密客户端问候配置501 = 线路ECH配置 || \`\${加密客户端问候域名499}+\${域名系统值500}\`;
+    加密客户端问候配置501 = 订阅用ECH值(true, 线路ECH配置) || null;
   }`
 );
 
@@ -262,10 +260,12 @@ const 面板 = `                        <div style="margin-bottom: 15px;">
   `    行列表595.push(\`    ech-opts:\`);
     行列表595.push(\`      enable: true\`);
     行列表595.push(\`      query-server-name: \${处理本地值622(加密客户端问候域名590)}\`);`,
-  `    行列表595.push(\`    ech-opts:\`);
-    行列表595.push(\`      enable: true\`);
-    if (线路ECH配置) 行列表595.push(\`      config: \${处理本地值622(线路ECH配置)}\`);
-    else 行列表595.push(\`      query-server-name: \${处理本地值622(加密客户端问候域名590)}\`);`
+  `    const 下发ECH配置590 = 是ECH配置(线路ECH配置) ? 线路ECH配置 : (是ECH配置(数量值596.ech) ? 数量值596.ech : '');
+    if (下发ECH配置590) {
+      行列表595.push(\`    ech-opts:\`);
+      行列表595.push(\`      enable: true\`);
+      行列表595.push(\`      config: \${处理本地值622(下发ECH配置590)}\`);
+    }`
 );
 
 写入(
@@ -277,11 +277,14 @@ const 面板 = `                        <div style="margin-bottom: 15px;">
       响应头部列表['X-ECH-Config-Length'] = String(加密客户端问候配置501.length);
     }
   }`,
-  `  // 添加ECH状态到响应头
-  if (启用加密客户端问候) {
+  `  // 添加ECH状态到响应头。没有本域名配置时标明跳过，节点仍按普通 TLS 下发。
+  if (启用加密客户端问候 && 线路ECH配置) {
     响应头部列表['X-ECH-Status'] = 'ENABLED';
-    响应头部列表['X-ECH-Mode'] = 线路ECH配置 ? 线路ECH状态 : 'dns';
-    if (线路ECH配置) 响应头部列表['X-ECH-Config-Length'] = String(线路ECH配置.length);
+    响应头部列表['X-ECH-Mode'] = 线路ECH状态;
+    响应头部列表['X-ECH-Config-Length'] = String(线路ECH配置.length);
+  } else if (启用加密客户端问候) {
+    响应头部列表['X-ECH-Status'] = 'SKIPPED';
+    响应头部列表['X-ECH-Mode'] = 'off';
   }`
 );
 
@@ -715,6 +718,109 @@ const 面板 = `                        <div style="margin-bottom: 15px;">
         status: 500
       });`,
   '      return 安静页面(500);'
+);
+
+写入(
+  'vless-source-ech',
+  `        // 如果启用了ECH，添加ech参数（ECH需要伪装成Chrome浏览器）
+        if (启用加密客户端问候) {
+          const 域名系统值458 = 自定义域名系统 || 'https://223.5.5.5/dns-query';
+          const 加密客户端问候域名457 = 自定义加密客户端问候域名 || 'cloudflare-ech.com';
+          网页套接字参数459.set('ech', \`\${加密客户端问候域名457}+\${域名系统值458}\`);
+        }`,
+  `        const 订阅ECH459 = 当前订阅ECH值();
+        if (订阅ECH459) 网页套接字参数459.set('ech', 订阅ECH459);`
+);
+
+写入(
+  'trojan-source-ech',
+  `        // 如果启用了ECH，添加ech参数（ECH需要伪装成Chrome浏览器）
+        if (启用加密客户端问候) {
+          const 域名系统值435 = 自定义域名系统 || 'https://223.5.5.5/dns-query';
+          const 加密客户端问候域名434 = 自定义加密客户端问候域名 || 'cloudflare-ech.com';
+          网页套接字参数436.set('ech', \`\${加密客户端问候域名434}+\${域名系统值435}\`);
+        }`,
+  `        const 订阅ECH436 = 当前订阅ECH值();
+        if (订阅ECH436) 网页套接字参数436.set('ech', 订阅ECH436);`
+);
+
+写入(
+  'vless-new-ech-safe',
+  `      // 如果启用了ECH，添加ech参数（ECH需要伪装成Chrome浏览器）
+      if (启用加密客户端问候) {
+        const 域名系统值84 = 自定义域名系统 || 'https://223.5.5.5/dns-query';
+        const 加密客户端问候域名83 = 自定义加密客户端问候域名 || 'cloudflare-ech.com';
+        链接85 += \`&ech=\${encodeURIComponent(\`\${加密客户端问候域名83}+\${域名系统值84}\`)}\`;
+      }`,
+  `      const 订阅ECH85 = 当前订阅ECH值();
+      if (订阅ECH85) 链接85 += \`&ech=\${encodeURIComponent(订阅ECH85)}\`;`
+);
+
+写入(
+  'vless-new-ech-other',
+  `      // 如果启用了ECH，添加ech参数（ECH需要伪装成Chrome浏览器）
+      if (启用加密客户端问候) {
+        const 域名系统值78 = 自定义域名系统 || 'https://223.5.5.5/dns-query';
+        const 加密客户端问候域名77 = 自定义加密客户端问候域名 || 'cloudflare-ech.com';
+        链接79 += \`&ech=\${encodeURIComponent(\`\${加密客户端问候域名77}+\${域名系统值78}\`)}\`;
+      }`,
+  `      const 订阅ECH79 = 当前订阅ECH值();
+      if (订阅ECH79) 链接79 += \`&ech=\${encodeURIComponent(订阅ECH79)}\`;`
+);
+
+写入(
+  'xhttp-ech',
+  `    if (启用加密客户端问候) {
+      const 域名系统值64 = 自定义域名系统 || 'https://223.5.5.5/dns-query';
+      const 加密客户端问候域名63 = 自定义加密客户端问候域名 || 'cloudflare-ech.com';
+      参数.set('ech', \`\${加密客户端问候域名63}+\${域名系统值64}\`);
+    }`,
+  `    const 订阅ECH参数 = 当前订阅ECH值();
+    if (订阅ECH参数) 参数.set('ech', 订阅ECH参数);`
+);
+
+写入(
+  'trojan-new-ech-safe',
+  `      // 如果启用了ECH，添加ech参数（ECH需要伪装成Chrome浏览器）
+      if (启用加密客户端问候) {
+        const 域名系统值58 = 自定义域名系统 || 'https://223.5.5.5/dns-query';
+        const 加密客户端问候域名57 = 自定义加密客户端问候域名 || 'cloudflare-ech.com';
+        链接59 += \`&ech=\${encodeURIComponent(\`\${加密客户端问候域名57}+\${域名系统值58}\`)}\`;
+      }`,
+  `      const 订阅ECH59 = 当前订阅ECH值();
+      if (订阅ECH59) 链接59 += \`&ech=\${encodeURIComponent(订阅ECH59)}\`;`
+);
+
+写入(
+  'trojan-new-ech-other',
+  `      // 如果启用了ECH，添加ech参数（ECH需要伪装成Chrome浏览器）
+      if (启用加密客户端问候) {
+        const 域名系统值 = 自定义域名系统 || 'https://223.5.5.5/dns-query';
+        const 加密客户端问候域名 = 自定义加密客户端问候域名 || 'cloudflare-ech.com';
+        链接 += \`&ech=\${encodeURIComponent(\`\${加密客户端问候域名}+\${域名系统值}\`)}\`;
+      }`,
+  `      const 订阅ECH链接 = 当前订阅ECH值();
+      if (订阅ECH链接) 链接 += \`&ech=\${encodeURIComponent(订阅ECH链接)}\`;`
+);
+
+写入(
+  'singbox-ech-config',
+  `      if (数量值568.ech) {
+        输出567.tls.ech = {
+          enabled: true,
+          pq_signature_schemes_enabled: false,
+          dynamic_record_sizing_disabled: false
+        };
+      }`,
+  `      const 单盒ECH配置568 = 是ECH配置(线路ECH配置) ? 线路ECH配置 : (是ECH配置(数量值568.ech) ? 数量值568.ech : '');
+      if (单盒ECH配置568) {
+        输出567.tls.ech = {
+          enabled: true,
+          config: [单盒ECH配置568],
+          pq_signature_schemes_enabled: false,
+          dynamic_record_sizing_disabled: false
+        };
+      }`
 );
 
 套上简洁样式(后台样式);
