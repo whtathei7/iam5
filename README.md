@@ -40,7 +40,7 @@
 
 ## SNI 阻断与多入口
 
-默认强制开启 ECH（包括旧 KV 配置仍保存 `ech=no` 的部署）。Clash 请使用支持 `ech-opts` 的新版 Mihomo 内核；订阅会给 TLS 节点写入 ECH 配置查询信息，使外层 ClientHello 不再明文暴露 `iam5.kdns.fr`。每个入口还会使用根据地址生成的不同 WebSocket 路径，避免所有节点共用 `/?ed=2048` 这一条固定特征。如需兼容不支持 ECH 的旧内核，可显式设置环境变量 `ECH_REQUIRED=no`，此时面板中的 ECH 开关重新生效。
+默认强制开启 ECH（包括旧 KV 配置仍保存 `ech=no` 的部署）。Clash 请使用支持 `ech-opts` 的新版 Mihomo 内核；Worker 会在生成订阅时获取最新 ECHConfig，并直接写入 Clash YAML 的 `ech-opts.config`，客户端不再依赖本地 HTTPS DNS 查询。获取失败时才回退到 `query-server-name`。每个入口还会使用根据地址生成的不同 WebSocket 路径，避免所有节点共用 `/?ed=2048` 这一条固定特征。如需兼容不支持 ECH 的旧内核，可显式设置环境变量 `ECH_REQUIRED=no`，此时面板中的 ECH 开关重新生效；也可以用 `ECH_CONFIG` 临时指定 Base64 ECHConfig。
 
 如果已经在 Cloudflare 中把其他自定义域名绑定到同一个 Worker，可设置环境变量 `FRONT_DOMAINS`（逗号分隔）。订阅会在主域名和这些域名之间轮换 SNI 与 Host。未绑定到同一 Worker 的域名不能填写；Cloudflare 会拒绝跨站域前置。
 

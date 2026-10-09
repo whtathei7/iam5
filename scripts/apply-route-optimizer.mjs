@@ -227,6 +227,54 @@ const 面板 = `                        <div style="margin-bottom: 15px;">
 );
 
 写入(
+  'ech-subscription-static',
+  `  // 如果启用了ECH，使用自定义值
+  let 加密客户端问候配置501 = null;
+  if (启用加密客户端问候) {
+    const 域名系统值500 = 自定义域名系统 || 'https://223.5.5.5/dns-query';
+    const 加密客户端问候域名499 = 自定义加密客户端问候域名 || 'cloudflare-ech.com';
+    加密客户端问候配置501 = \`\${加密客户端问候域名499}+\${域名系统值500}\`;
+  }`,
+  `  // 优先由 Worker 获取最新 ECHConfig 并直接下发，避免客户端本地 HTTPS DNS 查询失败。
+  let 加密客户端问候配置501 = null;
+  线路ECH配置 = '';
+  if (启用加密客户端问候) {
+    const 域名系统值500 = 自定义域名系统 || 'https://223.5.5.5/dns-query';
+    const 加密客户端问候域名499 = 自定义加密客户端问候域名 || 'cloudflare-ech.com';
+    线路ECH配置 = await 获取线路ECH配置(工作器域名504);
+    加密客户端问候配置501 = 线路ECH配置 || \`\${加密客户端问候域名499}+\${域名系统值500}\`;
+  }`
+);
+
+写入(
+  'ech-yaml-static',
+  `    行列表595.push(\`    ech-opts:\`);
+    行列表595.push(\`      enable: true\`);
+    行列表595.push(\`      query-server-name: \${处理本地值622(加密客户端问候域名590)}\`);`,
+  `    行列表595.push(\`    ech-opts:\`);
+    行列表595.push(\`      enable: true\`);
+    if (线路ECH配置) 行列表595.push(\`      config: \${处理本地值622(线路ECH配置)}\`);
+    else 行列表595.push(\`      query-server-name: \${处理本地值622(加密客户端问候域名590)}\`);`
+);
+
+写入(
+  'ech-response-header',
+  `  // 添加ECH状态到响应头
+  if (启用加密客户端问候) {
+    响应头部列表['X-ECH-Status'] = 'ENABLED';
+    if (加密客户端问候配置501) {
+      响应头部列表['X-ECH-Config-Length'] = String(加密客户端问候配置501.length);
+    }
+  }`,
+  `  // 添加ECH状态到响应头
+  if (启用加密客户端问候) {
+    响应头部列表['X-ECH-Status'] = 'ENABLED';
+    响应头部列表['X-ECH-Mode'] = 线路ECH配置 ? 线路ECH状态 : 'dns';
+    if (线路ECH配置) 响应头部列表['X-ECH-Config-Length'] = String(线路ECH配置.length);
+  }`
+);
+
+写入(
   'normalize',
   `  if (快照.ev === 'no' && 快照.et === 'no' && 快照.ex === 'no') {
     快照.ev = 'yes';

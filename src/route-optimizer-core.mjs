@@ -771,6 +771,29 @@ export function 短哈希(文本) {
   return (值 >>> 0).toString(16);
 }
 
+export function 是ECH配置(值) {
+  const 文本 = String(值 || '').trim();
+  if (文本.length < 32 || 文本.length > 4096 || !/^[A-Za-z0-9+/_=-]+$/.test(文本)) return false;
+  try {
+    const 标准 = 文本.replace(/-/g, '+').replace(/_/g, '/').replace(/=+$/, '');
+    const 补齐 = 标准 + '='.repeat((4 - 标准.length % 4) % 4);
+    return atob(补齐).length >= 8;
+  } catch (错误) {
+    return false;
+  }
+}
+
+export function 提取ECH配置(数据) {
+  const 答案 = 数据 && Array.isArray(数据.Answer) ? 数据.Answer : [];
+  for (const 项 of 答案) {
+    const 文本 = typeof 项?.data === 'string' ? 项.data : '';
+    const 匹配 = 文本.match(/(?:^|\s)ech=(?:"([A-Za-z0-9+/_=-]+)"|([A-Za-z0-9+/_=-]+))/i);
+    const 配置 = 匹配 && (匹配[1] || 匹配[2]);
+    if (是ECH配置(配置)) return 配置;
+  }
+  return '';
+}
+
 export function 生成抗阻断路径(节点, 用户 = '') {
   const 标识 = 节点 && (节点.ip || 节点.domain || 节点.server) || '';
   const 端口 = 节点 && 节点.port || 443;

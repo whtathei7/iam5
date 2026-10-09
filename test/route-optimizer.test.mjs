@@ -29,6 +29,8 @@ import {
   保留可用速度,
   标注保底,
   扩展备用端口,
+  是ECH配置,
+  提取ECH配置,
   生成抗阻断路径,
   分配前置域名,
   是公网地址,
@@ -139,6 +141,14 @@ test('移动和中转不会被电信挤掉，Worker 握手失败也不丢掉实�
   assert.notEqual(路径甲, 路径乙);
   const 前置 = 分配前置域名([{ ip: '1.1.1.1' }, { ip: '1.0.0.1' }, { ip: '8.8.8.8' }], 'main.example.com', ['alt.example.com']);
   assert.deepEqual(前置.map(项 => 项.frontDomain), ['main.example.com', 'alt.example.com', 'main.example.com']);
+});
+
+test('可以从 HTTPS DNS 回答中提取静态 ECHConfig', () => {
+  const 配置 = 'AEX+DQBBjgAgACD+zopphOEd4wE3MjhUHOMvon4iwlravt7ZRBqu34NpQwAEAAEAAQASY2xvdWRmbGFyZS1lY2guY29tAAA=';
+  assert.equal(是ECH配置(配置), true);
+  assert.equal(是ECH配置('='.repeat(40)), false);
+  assert.equal(提取ECH配置({ Answer: [{ type: 65, data: `1 . alpn=h3,h2 ech=${配置} ipv4hint=1.1.1.1` }] }), 配置);
+  assert.equal(提取ECH配置({ Answer: [{ type: 1, data: '1.1.1.1' }] }), '');
 });
 
 test('私网地址不能下发，社区中转可以，电信再快也留移动节点', () => {
@@ -269,7 +279,9 @@ test('订阅请求会走优选、保底前置和缓存', async () => {
   register(new URL('./cf-hook.mjs', import.meta.url));
   const 工人 = await import('../_worker.js');
   const 令牌 = '351c9981-04b6-4103-aa4b-864aa9c91469';
-  const 请求订阅 = () => 工人.default.fetch(new Request(`https://example.com/${令牌}/sub`), { u: 令牌 }, { waitUntil() {} });
+  const 测试ECH配置 = 'AEX+DQBBjgAgACD+zopphOEd4wE3MjhUHOMvon4iwlravt7ZRBqu34NpQwAEAAEAAQASY2xvdWRmbGFyZS1lY2guY29tAAA=';
+  const 测试环境 = { u: 令牌, ECH_CONFIG: 测试ECH配置 };
+  const 请求订阅 = () => 工人.default.fetch(new Request(`https://example.com/${令牌}/sub`), 测试环境, { waitUntil() {} });
   const 第一次 = await 请求订阅();
   assert.equal(第一次.status, 200);
   const 摘要1 = 第一次.headers.get('X-Opt') || '';
@@ -287,13 +299,16 @@ test('订阅请求会走优选、保底前置和缓存', async () => {
   assert.doesNotMatch(摘要1, /(?:^|;)alive=/);
   const 第二次 = await 请求订阅();
   assert.match(第二次.headers.get('X-Opt') || '', /cache=fresh/);
-  const Clash配置 = await 工人.default.fetch(new Request(`https://example.com/${令牌}/sub?target=clash`), { u: 令牌 }, { waitUntil() {} });
+  const Clash配置 = await 工人.default.fetch(new Request(`https://example.com/${令牌}/sub?target=clash`), 测试环境, { waitUntil() {} });
   const Clash正文 = await Clash配置.text();
   assert.match(Clash配置.headers.get('content-type') || '', /text\/yaml/);
+  assert.equal(Clash配置.headers.get('X-ECH-Mode'), 'env');
   assert.match(Clash正文, /ech-opts:\s*\n\s+enable: true/);
+  assert.match(Clash正文, new RegExp(`config: "${测试ECH配置.replace(/[+]/g, '\\+')}"`));
+  assert.doesNotMatch(Clash正文, /query-server-name:/);
   assert.match(Clash正文, /path: "?\/assets\/[0-9a-f]+\?ed=2048"?/);
   const 自定义 = await 工人.default.fetch(new Request(`https://example.com/${令牌}/sub`), {
-    u: 令牌,
+    ...测试环境,
     yx: '1.2.3.4:443#自定甲,5.6.7.8:443#自定乙'
   }, { waitUntil() {} });
   const 自定义正文 = decodeURIComponent(Buffer.from(await 自定义.text(), 'base64').toString('utf8'));
@@ -302,15 +317,15 @@ test('订阅请求会走优选、保底前置和缓存', async () => {
   assert.match(自定义正文, /自定乙/);
   assert.equal(自定义行.some(行 => /104\.16\.0\.1/.test(行)), false);
   assert.ok(自定义行.length >= 2 && 自定义行.length <= 8);
-  const 机器人 = await 工人.default.fetch(new Request('https://example.com/robots.txt'), { u: 令牌 }, { waitUntil() {} });
+  const 机器人 = await 工人.default.fetch(new Request('https://example.com/robots.txt'), 测试环境, { waitUntil() {} });
   assert.equal(机器人.status, 200);
   assert.match(await 机器人.text(), /Disallow: \//);
-  const 未知 = await 工人.default.fetch(new Request('https://example.com/scan'), { u: 令牌 }, { waitUntil() {} });
+  const 未知 = await 工人.default.fetch(new Request('https://example.com/scan'), 测试环境, { waitUntil() {} });
   assert.equal(未知.status, 404);
   const 未知正文 = await 未知.text();
   assert.match(未知正文, /这里没有内容/);
   assert.doesNotMatch(未知正文, /UUID|Not Found|vless/i);
-  const 错误令牌 = await 工人.default.fetch(new Request('https://example.com/351c9981-04b6-4103-aa4b-864aa9c91470/sub'), { u: 令牌 }, { waitUntil() {} });
+  const 错误令牌 = await 工人.default.fetch(new Request('https://example.com/351c9981-04b6-4103-aa4b-864aa9c91470/sub'), 测试环境, { waitUntil() {} });
   assert.equal(错误令牌.status, 404);
   assert.match(await 错误令牌.text(), /这里没有内容/);
   let 末次 = 错误令牌;

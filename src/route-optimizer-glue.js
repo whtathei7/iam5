@@ -17,6 +17,53 @@ let 线路优化刷新任务 = null;
 let 线路优化刷新键 = '';
 let 线路写入账本 = { day: '', writes: 0, lastAt: 0, hash: '' };
 let 线路入口域名 = '';
+let 线路ECH配置 = '';
+let 线路ECH状态 = 'dns';
+let 线路ECH缓存 = { domain: '', value: '', at: 0 };
+
+async function 查询ECH配置(域名) {
+  const 控制器 = new AbortController();
+  const 定时器 = setTimeout(() => 控制器.abort(), 3500);
+  try {
+    const 地址 = `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(域名)}&type=65`;
+    const 响应 = await fetch(地址, {
+      headers: { Accept: 'application/dns-json' },
+      signal: 控制器.signal
+    });
+    if (!响应.ok) return '';
+    return 提取ECH配置(await 响应.json());
+  } catch (错误) {
+    return '';
+  } finally {
+    clearTimeout(定时器);
+  }
+}
+
+async function 获取线路ECH配置(入口域名) {
+  const 环境配置 = String(当前环境.ECH_CONFIG || 当前环境.echConfig || '').trim();
+  if (是ECH配置(环境配置)) {
+    线路ECH状态 = 'env';
+    return 环境配置;
+  }
+  const 域名 = String(自定义加密客户端问候域名 || 入口域名 || 'cloudflare-ech.com').trim().toLowerCase();
+  const 现在 = Date.now();
+  if (线路ECH缓存.domain === 域名 && 线路ECH缓存.value && 现在 - 线路ECH缓存.at < 60 * 1000) {
+    线路ECH状态 = 'cache';
+    return 线路ECH缓存.value;
+  }
+  const 最新 = await 查询ECH配置(域名) || (域名 === 入口域名 ? '' : await 查询ECH配置(入口域名));
+  if (最新) {
+    线路ECH缓存 = { domain: 域名, value: 最新, at: 现在 };
+    线路ECH状态 = 'static';
+    return 最新;
+  }
+  if (线路ECH缓存.domain === 域名 && 线路ECH缓存.value && 现在 - 线路ECH缓存.at < 6 * 60 * 60 * 1000) {
+    线路ECH状态 = 'stale';
+    return 线路ECH缓存.value;
+  }
+  线路ECH状态 = 'dns';
+  return '';
+}
 
 function 读取备用前置域名() {
   const 原文 = 当前环境.FRONT_DOMAINS || 当前环境.frontDomains || 当前环境.OPT_FRONT_DOMAINS || '';
