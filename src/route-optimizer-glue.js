@@ -112,7 +112,7 @@ function 读取当前线路选项() {
 
 function 线路缓存键(选项, 自定义摘要) {
   return [
-    'stable5',
+    'stable6',
     选项.region,
     选项.mobile ? 1 : 0,
     选项.unicom ? 1 : 0,
@@ -296,9 +296,9 @@ async function 探测握手(主机, 端口, 超时毫秒) {
 
 async function 测活候选(候选, 选项) {
   if (!选项.probe) return { nodes: (候选 || []).filter(稳定可下发), effective: true };
-  const 样本 = (候选 || []).filter(节点 => 节点 && 节点.kind !== 'domain' && (节点.pinned || 位于云墙网段(节点.ip))).slice(0, 18);
+  const 样本 = (候选 || []).filter(节点 => 节点 && 节点.kind !== 'domain' && (节点.pinned || 位于云墙网段(节点.ip))).slice(0, 36);
   if (!样本.length) return 应用握手结果(候选, [], 选项, true);
-  const 首轮 = await 并发映射(样本, 4, async 节点 => {
+  const 首轮 = await 并发映射(样本, 5, async 节点 => {
     const 端口 = 规范云墙端口(节点.port, !!节点.pinned);
     const 状态 = await 探测握手(节点.ip, 端口, 900);
     return { key: 节点键(节点), port: 端口, status: 状态, node: 节点 };

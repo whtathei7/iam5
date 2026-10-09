@@ -2249,7 +2249,7 @@ function 生成值值589(链接列表588, 本地值587 = {}) {
 /* ROUTE_OPT_START clash-auto-fastest */
   const 自动选择组名 = '⚡ 自动选择';
   const 自动测速网址 = 'https://www.gstatic.com/generate_204';
-  const 自动选择节点 = 挑选自动最快节点(节点列表586, 12);
+  const 自动选择节点 = 挑选自动最快节点(节点列表586, 16);
   const 列出测速节点 = 列表 => 列表.length ? 列表.map(节点 => `      - ${处理本地值622(节点.name)}`).join('\n') : '      - DIRECT';
   const 自动选择组 = [
     '  - name: "' + 自动选择组名 + '"',
@@ -2318,7 +2318,7 @@ function 生成值值数据对象(链接列表573) {
   const 域名系统值570 = 自定义域名系统 || 'https://223.5.5.5/dns-query';
 /* ROUTE_OPT_START singbox-auto-candidates */
   const 出站值 = 节点列表572.map(数量值569 => 数量值569.name);
-  const 自动选择候选 = 挑选自动最快节点(节点列表572.map(项 => ({ name: 项.name, server: 项.server, port: 项.port, sni: 项.sni })), 12).map(项 => 项.name);
+  const 自动选择候选 = 挑选自动最快节点(节点列表572.map(项 => ({ name: 项.name, server: 项.server, port: 项.port, sni: 项.sni })), 16).map(项 => 项.name);
   const 自动选择出站 = 自动选择候选.length ? 自动选择候选 : 出站值.slice(0, 8);
 /* ROUTE_OPT_END singbox-auto-candidates */
   function 处理节点值出站(数量值568) {
@@ -2624,7 +2624,7 @@ function 生成值值562(链接列表561) {
   const 列表553 = 名称列表557.length ? 名称列表557.join(', ') : 'DIRECT';
 /* ROUTE_OPT_START surge-auto-fastest */
   const 自动选择名 = '⚡ 自动选择';
-  const 自动候选 = 挑选自动最快节点(节点列表560.map(项 => ({ name: 项.name, server: 项.server, port: 项.port, sni: 项.sni })), 12);
+  const 自动候选 = 挑选自动最快节点(节点列表560.map(项 => ({ name: 项.name, server: 项.server, port: 项.port, sni: 项.sni })), 16);
   const 自动名单 = 自动候选.length ? 自动候选.map(项 => 项.name).join(', ') : (名称列表557[0] || 'DIRECT');
   行列表555.push(`${自动选择名} = url-test, ${自动名单}, url=http://www.gstatic.com/generate_204, interval=600, tolerance=50, timeout=5`);
   行列表555.push(`🚀 节点选择 = select, ${自动选择名}, 🎯 全球直连, ${列表553}`);
@@ -2708,7 +2708,7 @@ function 生成值值552(链接列表551) {
   const 列表542 = 名称列表548.length ? 名称列表548.join(',') : 'DIRECT';
 /* ROUTE_OPT_START loon-auto-fastest */
   const 自动选择名 = '⚡ 自动选择';
-  const 自动候选 = 挑选自动最快节点(节点列表550.map(项 => ({ name: 项.name, server: 项.server, port: 项.port, sni: 项.sni })), 12);
+  const 自动候选 = 挑选自动最快节点(节点列表550.map(项 => ({ name: 项.name, server: 项.server, port: 项.port, sni: 项.sni })), 16);
   const 自动名单 = 自动候选.length ? 自动候选.map(项 => 项.name).join(',') : (名称列表548[0] || 'DIRECT');
   行列表546.push(`${自动选择名} = url-test,${自动名单},url=http://www.gstatic.com/generate_204,interval=600,tolerance=50`);
   行列表546.push(`🚀 节点选择 = select,${自动选择名},🎯 全球直连,${列表542}`);
@@ -2800,7 +2800,7 @@ function 生成值值(链接列表541) {
   const 列表534 = 名称列表.length ? 名称列表.join(', ') : 'direct';
 /* ROUTE_OPT_START qx-auto-fastest */
   const 自动选择名 = '⚡ 自动选择';
-  const 自动候选 = 挑选自动最快节点(节点列表.map(项 => ({ name: 项.name, server: 项.server, port: 项.port, sni: 项.sni })), 12);
+  const 自动候选 = 挑选自动最快节点(节点列表.map(项 => ({ name: 项.name, server: 项.server, port: 项.port, sni: 项.sni })), 16);
   const 自动名单 = 自动候选.length ? 自动候选.map(项 => 项.name).join(', ') : 'direct';
   行列表538.push(`url-latency-benchmark=${自动选择名}, ${自动名单}, check-interval=600, tolerance=50, img-url=https://fastly.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Auto.png`);
   行列表538.push(`static=🚀 节点选择, ${自动选择名}, ${列表534}, direct, img-url=${解码64('aHR0cHM6Ly9mYXN0bHkuanNkZWxpdnIubmV0L2doL0tvb2xzb24vUXVyZUBtYXN0ZXIvSWNvblNldC9Db2xvci9Qcm94eS5wbmc=')}`);
@@ -3252,10 +3252,10 @@ export const 地区云墙源 = {
 // 微测、麒麟、CFYes、vvHan 都在 bestcf.pages.dev，必须按标签拆开。
 // 首页上的专线和地区随机列表大多不在 Cloudflare 网段，默认不拉取。
 export const 主力优选源 = [
-  { url: 'https://bestcf.pages.dev/uouin/all.txt', isps: ['电信', '移动', '联通'], taggedOnly: true, relay: false, maxLines: 80, limits: { 电信: 8, 移动: 6, 联通: 2 } },
-  { url: 'https://bestcf.pages.dev/wetest/ipv4.txt', isps: ['电信', '移动', '联通'], taggedOnly: true, relay: false, maxLines: 40, limits: { 电信: 5, 移动: 5, 联通: 2 } },
-  { url: 'https://bestcf.pages.dev/cfyes/ipv4.txt', isps: ['电信', '移动', '联通'], taggedOnly: true, relay: false, maxLines: 40, limits: { 电信: 5, 移动: 5, 联通: 2 } },
-  { url: 'https://bestcf.pages.dev/vvhan/ipv4.txt', isps: ['电信', '移动'], taggedOnly: true, relay: false, maxLines: 80, limits: { 电信: 4, 移动: 4 } }
+  { url: 'https://bestcf.pages.dev/uouin/all.txt', isps: ['电信', '移动', '联通'], taggedOnly: true, relay: false, maxLines: 80, limits: { 电信: 12, 移动: 12, 联通: 2 } },
+  { url: 'https://bestcf.pages.dev/wetest/ipv4.txt', isps: ['电信', '移动', '联通'], taggedOnly: true, relay: false, maxLines: 40, limits: { 电信: 6, 移动: 6, 联通: 2 } },
+  { url: 'https://bestcf.pages.dev/cfyes/ipv4.txt', isps: ['电信', '移动', '联通'], taggedOnly: true, relay: false, maxLines: 40, limits: { 电信: 6, 移动: 6, 联通: 2 } },
+  { url: 'https://bestcf.pages.dev/vvhan/ipv4.txt', isps: ['电信', '移动'], taggedOnly: true, relay: false, maxLines: 80, limits: { 电信: 12, 移动: 12 } }
 ];
 export const 优选域名源 = 'https://bestcf.pages.dev/domain/all.txt';
 export const 六版优选源 = 'https://bestcf.pages.dev/cfyes/ipv6.txt';
@@ -3942,8 +3942,8 @@ export function 保留可用速度(列表, 每家 = 4) {
       const 已见 = new Set();
       const 测速 = 稳定.filter(节点 => 节点.speed >= 1);
       const 精选 = 稳定.filter(节点 => !(节点.speed >= 1));
-      收入不重复(选出, 已见, 测速, 6);
-      if (选出.length < 4) 收入不重复(选出, 已见, 精选, 4 - 选出.length);
+      收入不重复(选出, 已见, 测速, 12);
+      收入不重复(选出, 已见, 精选, 6);
       结果.push(...选出);
       continue;
     }
@@ -4540,7 +4540,7 @@ function 读取当前线路选项() {
 
 function 线路缓存键(选项, 自定义摘要) {
   return [
-    'stable5',
+    'stable6',
     选项.region,
     选项.mobile ? 1 : 0,
     选项.unicom ? 1 : 0,
@@ -4724,9 +4724,9 @@ async function 探测握手(主机, 端口, 超时毫秒) {
 
 async function 测活候选(候选, 选项) {
   if (!选项.probe) return { nodes: (候选 || []).filter(稳定可下发), effective: true };
-  const 样本 = (候选 || []).filter(节点 => 节点 && 节点.kind !== 'domain' && (节点.pinned || 位于云墙网段(节点.ip))).slice(0, 18);
+  const 样本 = (候选 || []).filter(节点 => 节点 && 节点.kind !== 'domain' && (节点.pinned || 位于云墙网段(节点.ip))).slice(0, 36);
   if (!样本.length) return 应用握手结果(候选, [], 选项, true);
-  const 首轮 = await 并发映射(样本, 4, async 节点 => {
+  const 首轮 = await 并发映射(样本, 5, async 节点 => {
     const 端口 = 规范云墙端口(节点.port, !!节点.pinned);
     const 状态 = await 探测握手(节点.ip, 端口, 900);
     return { key: 节点键(节点), port: 端口, status: 状态, node: 节点 };

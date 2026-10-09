@@ -241,6 +241,7 @@ test('移动不会被电信挤掉，握手失败的地址不再下发', () => {
   assert.equal(社区节点(列表[5]), false);
   const 电信 = Array.from({ length: 8 }, (_, 序) => ({ ip: `104.18.2.${序 + 1}`, port: 443, isp: '电信', tier: 1, kind: 'v4', latency: 40, speed: 20, region: '' }));
   const 保留 = 保留可用速度(电信.concat([列表[3], 列表[4]]), 4);
+  assert.equal(保留.filter(项 => 项.isp === '电信').length, 8);
   assert.equal(保留.some(项 => 项.isp === '移动'), true);
   assert.equal(保留.some(项 => 项.relay), false);
   const 联通实测 = { ip: '104.26.0.79', port: 443, isp: '联通', tier: 1, kind: 'v4', latency: 68, speed: 0.1, region: '' };
@@ -424,7 +425,7 @@ test('套用脚本可重复执行，工人脚本语法保持有效', () => {
   const 二次 = fs.readFileSync(new URL('../_worker.js', import.meta.url));
   assert.equal(一次.equals(二次), true);
   assert.match(二次.toString(), /组装线路优化节点/);
-  assert.match(二次.toString(), /stable5/);
+  assert.match(二次.toString(), /stable6/);
   assert.match(二次.toString(), /线路优化新鲜毫秒 = 10 \* 60 \* 1000/);
   assert.doesNotMatch(二次.toString(), /入口补位\(候选/);
   assert.doesNotMatch(二次.toString(), /随机补足节点\(4\)/);

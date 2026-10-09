@@ -337,7 +337,7 @@ const 面板 = `                        <div style="margin-bottom: 15px;">
   `  const 值值577 = [解码64('cHJveHktZ3JvdXBzOg=='), '  - name: "🚀 节点选择"', '    type: select', '    proxies:', '      - "🎯 全球直连"', 节点仅,`,
   `  const 自动选择组名 = '⚡ 自动选择';
   const 自动测速网址 = 'https://www.gstatic.com/generate_204';
-  const 自动选择节点 = 挑选自动最快节点(节点列表586, 12);
+  const 自动选择节点 = 挑选自动最快节点(节点列表586, 16);
   const 列出测速节点 = 列表 => 列表.length ? 列表.map(节点 => \`      - \${处理本地值622(节点.name)}\`).join('\\n') : '      - DIRECT';
   const 自动选择组 = [
     '  - name: "' + 自动选择组名 + '"',
@@ -363,7 +363,7 @@ const 面板 = `                        <div style="margin-bottom: 15px;">
   'surge-auto-fastest',
   '  行列表555.push(`🚀 节点选择 = select, 🎯 全球直连, ${列表553}`);',
   `  const 自动选择名 = '⚡ 自动选择';
-  const 自动候选 = 挑选自动最快节点(节点列表560.map(项 => ({ name: 项.name, server: 项.server, port: 项.port, sni: 项.sni })), 12);
+  const 自动候选 = 挑选自动最快节点(节点列表560.map(项 => ({ name: 项.name, server: 项.server, port: 项.port, sni: 项.sni })), 16);
   const 自动名单 = 自动候选.length ? 自动候选.map(项 => 项.name).join(', ') : (名称列表557[0] || 'DIRECT');
   行列表555.push(\`\${自动选择名} = url-test, \${自动名单}, url=http://www.gstatic.com/generate_204, interval=600, tolerance=50, timeout=5\`);
   行列表555.push(\`🚀 节点选择 = select, \${自动选择名}, 🎯 全球直连, \${列表553}\`);`
@@ -373,7 +373,7 @@ const 面板 = `                        <div style="margin-bottom: 15px;">
   'loon-auto-fastest',
   '  行列表546.push(`🚀 节点选择 = select,🎯 全球直连,${列表542}`);',
   `  const 自动选择名 = '⚡ 自动选择';
-  const 自动候选 = 挑选自动最快节点(节点列表550.map(项 => ({ name: 项.name, server: 项.server, port: 项.port, sni: 项.sni })), 12);
+  const 自动候选 = 挑选自动最快节点(节点列表550.map(项 => ({ name: 项.name, server: 项.server, port: 项.port, sni: 项.sni })), 16);
   const 自动名单 = 自动候选.length ? 自动候选.map(项 => 项.name).join(',') : (名称列表548[0] || 'DIRECT');
   行列表546.push(\`\${自动选择名} = url-test,\${自动名单},url=http://www.gstatic.com/generate_204,interval=600,tolerance=50\`);
   行列表546.push(\`🚀 节点选择 = select,\${自动选择名},🎯 全球直连,\${列表542}\`);`
@@ -383,7 +383,7 @@ const 面板 = `                        <div style="margin-bottom: 15px;">
   'qx-auto-fastest',
   '  行列表538.push(`static=🚀 节点选择, ${列表534}, direct, img-url=${解码64(\'aHR0cHM6Ly9mYXN0bHkuanNkZWxpdnIubmV0L2doL0tvb2xzb24vUXVyZUBtYXN0ZXIvSWNvblNldC9Db2xvci9Qcm94eS5wbmc=\')}`);',
   `  const 自动选择名 = '⚡ 自动选择';
-  const 自动候选 = 挑选自动最快节点(节点列表.map(项 => ({ name: 项.name, server: 项.server, port: 项.port, sni: 项.sni })), 12);
+  const 自动候选 = 挑选自动最快节点(节点列表.map(项 => ({ name: 项.name, server: 项.server, port: 项.port, sni: 项.sni })), 16);
   const 自动名单 = 自动候选.length ? 自动候选.map(项 => 项.name).join(', ') : 'direct';
   行列表538.push(\`url-latency-benchmark=\${自动选择名}, \${自动名单}, check-interval=600, tolerance=50, img-url=https://fastly.jsdelivr.net/gh/Koolson/Qure@master/IconSet/Color/Auto.png\`);
   行列表538.push(\`static=🚀 节点选择, \${自动选择名}, \${列表534}, direct, img-url=\${解码64('aHR0cHM6Ly9mYXN0bHkuanNkZWxpdnIubmV0L2doL0tvb2xzb24vUXVyZUBtYXN0ZXIvSWNvblNldC9Db2xvci9Qcm94eS5wbmc=')}\`);`
@@ -393,7 +393,7 @@ const 面板 = `                        <div style="margin-bottom: 15px;">
   'singbox-auto-candidates',
   '  const 出站值 = 节点列表572.map(数量值569 => 数量值569.name);',
   `  const 出站值 = 节点列表572.map(数量值569 => 数量值569.name);
-  const 自动选择候选 = 挑选自动最快节点(节点列表572.map(项 => ({ name: 项.name, server: 项.server, port: 项.port, sni: 项.sni })), 12).map(项 => 项.name);
+  const 自动选择候选 = 挑选自动最快节点(节点列表572.map(项 => ({ name: 项.name, server: 项.server, port: 项.port, sni: 项.sni })), 16).map(项 => 项.name);
   const 自动选择出站 = 自动选择候选.length ? 自动选择候选 : 出站值.slice(0, 8);`
 );
 

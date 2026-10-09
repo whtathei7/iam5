@@ -18,10 +18,10 @@ export const 地区云墙源 = {
 // 微测、麒麟、CFYes、vvHan 都在 bestcf.pages.dev，必须按标签拆开。
 // 首页上的专线和地区随机列表大多不在 Cloudflare 网段，默认不拉取。
 export const 主力优选源 = [
-  { url: 'https://bestcf.pages.dev/uouin/all.txt', isps: ['电信', '移动', '联通'], taggedOnly: true, relay: false, maxLines: 80, limits: { 电信: 8, 移动: 6, 联通: 2 } },
-  { url: 'https://bestcf.pages.dev/wetest/ipv4.txt', isps: ['电信', '移动', '联通'], taggedOnly: true, relay: false, maxLines: 40, limits: { 电信: 5, 移动: 5, 联通: 2 } },
-  { url: 'https://bestcf.pages.dev/cfyes/ipv4.txt', isps: ['电信', '移动', '联通'], taggedOnly: true, relay: false, maxLines: 40, limits: { 电信: 5, 移动: 5, 联通: 2 } },
-  { url: 'https://bestcf.pages.dev/vvhan/ipv4.txt', isps: ['电信', '移动'], taggedOnly: true, relay: false, maxLines: 80, limits: { 电信: 4, 移动: 4 } }
+  { url: 'https://bestcf.pages.dev/uouin/all.txt', isps: ['电信', '移动', '联通'], taggedOnly: true, relay: false, maxLines: 80, limits: { 电信: 12, 移动: 12, 联通: 2 } },
+  { url: 'https://bestcf.pages.dev/wetest/ipv4.txt', isps: ['电信', '移动', '联通'], taggedOnly: true, relay: false, maxLines: 40, limits: { 电信: 6, 移动: 6, 联通: 2 } },
+  { url: 'https://bestcf.pages.dev/cfyes/ipv4.txt', isps: ['电信', '移动', '联通'], taggedOnly: true, relay: false, maxLines: 40, limits: { 电信: 6, 移动: 6, 联通: 2 } },
+  { url: 'https://bestcf.pages.dev/vvhan/ipv4.txt', isps: ['电信', '移动'], taggedOnly: true, relay: false, maxLines: 80, limits: { 电信: 12, 移动: 12 } }
 ];
 export const 优选域名源 = 'https://bestcf.pages.dev/domain/all.txt';
 export const 六版优选源 = 'https://bestcf.pages.dev/cfyes/ipv6.txt';
@@ -708,8 +708,8 @@ export function 保留可用速度(列表, 每家 = 4) {
       const 已见 = new Set();
       const 测速 = 稳定.filter(节点 => 节点.speed >= 1);
       const 精选 = 稳定.filter(节点 => !(节点.speed >= 1));
-      收入不重复(选出, 已见, 测速, 6);
-      if (选出.length < 4) 收入不重复(选出, 已见, 精选, 4 - 选出.length);
+      收入不重复(选出, 已见, 测速, 12);
+      收入不重复(选出, 已见, 精选, 6);
       结果.push(...选出);
       continue;
     }
